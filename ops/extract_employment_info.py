@@ -38,6 +38,10 @@ COMPANY_HINT_RE = re.compile(
     r"(公司|有限|服务部|工作室|经营部|个体工商户|商行|中心|店|厂|合作社|事务所|"
     r"管理咨询|网络科技|文化传播|科技|围场)"
 )
+ROLE_FRAGMENT_RE = re.compile(
+    r"(法定|代表人|负责人|经营者|执行事务|合伙人|首席代表|"
+    r"代责人|岱代|代委人|货代责人|責人)"
+)
 
 ROLE_RULES = [
     ("法定代表人", "法定代表人（负责人、经营者、执行事务合伙人、首席代表）"),
@@ -149,11 +153,14 @@ def clean_company(raw: str) -> str:
 def looks_like_company(value: str) -> bool:
     if not value or len(normalize_company_key(value)) < 3:
         return False
-    if NOISE_LINE_RE.search(value) and not COMPANY_HINT_RE.search(value):
+    has_company_hint = bool(COMPANY_HINT_RE.search(value))
+    if ROLE_FRAGMENT_RE.search(value) and not has_company_hint:
+        return False
+    if NOISE_LINE_RE.search(value) and not has_company_hint:
         return False
     if re.fullmatch(r"[\d:：.\-\s]+", value):
         return False
-    return bool(COMPANY_HINT_RE.search(value) or len(normalize_company_key(value)) >= 6)
+    return bool(has_company_hint or len(normalize_company_key(value)) >= 6)
 
 
 def split_lines(method_data: dict[str, Any]) -> list[str]:
@@ -322,6 +329,8 @@ def merge_field_status(rows: list[dict[str, str]], field: str) -> str:
     statuses = {clean_text(r.get(status_field, "")) for r in rows if clean_text(r.get(status_field, ""))}
     if "冲突" in statuses:
         return "冲突"
+    if "证据补齐" in statuses or "占位" in statuses:
+        return "证据补齐"
     value_status = field_status([r.get(field, "") for r in rows], field)
     if value_status == "冲突":
         return "冲突"
@@ -383,17 +392,25 @@ def group_candidates(candidates: list[Candidate]) -> list[list[Candidate]]:
 
 
 def consensus_from_group(group: list[Candidate]) -> dict[str, str]:
+    method_count = len({c.method for c in group})
+
+    def status_for(values: list[str], field: str) -> str:
+        status = field_status(values, field)
+        if status == "一致" and method_count == 1:
+            return "证据补齐"
+        return status
+
     return {
         "企业名称": choose_value([c.company for c in group], prefer_long=True),
-        "企业名称状态": field_status([c.company for c in group], "企业名称"),
+        "企业名称状态": status_for([c.company for c in group], "企业名称"),
         "经营状态": choose_value([c.status for c in group]),
-        "经营状态状态": field_status([c.status for c in group], "经营状态"),
+        "经营状态状态": status_for([c.status for c in group], "经营状态"),
         "承担职务": choose_value([c.role for c in group]),
-        "承担职务状态": field_status([c.role for c in group], "承担职务"),
+        "承担职务状态": status_for([c.role for c in group], "承担职务"),
         "持股比例": choose_value([c.share_ratio for c in group]),
-        "持股比例状态": field_status([c.share_ratio for c in group], "持股比例"),
+        "持股比例状态": status_for([c.share_ratio for c in group], "持股比例"),
         "支持方案": "|".join(sorted({c.method for c in group})),
-        "支持数": str(len({c.method for c in group})),
+        "支持数": str(method_count),
         "来源文件": "|".join(sorted({c.filename for c in group})),
         "证据": " || ".join(c.evidence for c in group[:3])[:1000],
     }
