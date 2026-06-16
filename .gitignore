@@ -1,0 +1,25 @@
+# Local environment
+.env
+.env.*
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.DS_Store
+
+# Runtime data / uploads / generated OCR outputs
+data/
+uploads/
+static/uploads/
+ops/reports/
+ops/*.md
+ocr_results.json
+ocr_results_with_bbox.json
+uploaded_parsed_results.json
+portal_chat.json
+
+# Private infrastructure scripts
+ops/199_proxy_gateway.sh
+ops/199_remote_bootstrap.sh

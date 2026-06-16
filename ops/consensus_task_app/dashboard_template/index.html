@@ -1,0 +1,2007 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OCR 基础信息报告 - 列表</title>
+  <script>
+    (function () {
+      var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
+      document.documentElement.classList.toggle("is-windows", /Win/i.test(platform));
+    })();
+  </script>
+  <style>
+    @font-face {
+      font-family: "OCRSansSC";
+      src: url("assets/fonts/SourceHanSansSC-Regular.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --line: #dfe5f0;
+      --text: #162238;
+      --muted: #57607a;
+      --ok: #166534;
+      --bad: #b91c1c;
+      --warn: #92400e;
+      --chip: #eef2ff;
+      --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Hiragino Sans GB", sans-serif;
+      --font-windows-display: "OCRSansSC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      --font-windows-data: "Microsoft YaHei UI", "Microsoft YaHei", "OCRSansSC", "Noto Sans CJK SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; font-family: var(--font-ui); font-variant-numeric: tabular-nums; background: var(--bg); color: var(--text); }
+    .container { max-width: 1380px; margin: 0 auto; padding: 18px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+    h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+    .toolbar { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .toolbar label { font-size: 13px; color: var(--muted); margin-right: 6px; }
+    .toolbar input[type="text"],
+    .toolbar select { border: 1px solid #c9d2e3; border-radius: 7px; padding: 6px 8px; font-size: 13px; }
+    .toolbar .sep { width: 1px; height: 26px; background: #d6deef; margin: 0 6px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 12px; }
+    .chip { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; font-size: 13px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    thead th { background: #f8faff; text-align: left; padding: 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: #3b4a69; cursor: pointer; white-space: nowrap; }
+    tbody td { padding: 10px; border-bottom: 1px solid #edf1f8; font-size: 13px; vertical-align: top; }
+    tbody tr:hover { background: #f8fbff; }
+    .legacy-sort { display: none !important; }
+    .toolbar input#q { width: min(520px, 46vw); min-width: 320px; }
+    .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .home-link { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #c7d3ea; background: #fff; border-radius: 8px; padding: 7px 11px; color: #1f3b73; text-decoration: none; font-size: 13px; font-weight: 700; }
+    .home-link:hover { background: #f8fbff; }
+    .filter-summary, .filter-panel { display: none; }
+    th.sort-filter-th { padding: 0; vertical-align: middle; }
+    .th-wrap { display: flex; align-items: center; justify-content: flex-start; gap: 3px; padding: 8px 7px; min-height: 36px; }
+    .th-sort { appearance: none; border: 0; background: transparent; padding: 0; margin: 0; color: inherit; font: inherit; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; min-width: 0; text-align: left; flex: 0 1 auto; }
+    .th-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sort-mark { color: #94a3b8; font-size: 11px; min-width: 10px; text-align: center; line-height: 1; }
+    .sort-mark.active { color: #1f3b73; }
+    .th-filter { appearance: none; border: 1px solid transparent; background: transparent; color: #94a3b8; border-radius: 6px; cursor: pointer; padding: 2px 3px; font-size: 11px; line-height: 16px; width: 22px; min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; position: relative; flex: 0 0 auto; }
+    .th-filter::before { content: ""; width: 12px; height: 12px; background: currentColor; clip-path: polygon(8% 14%, 92% 14%, 60% 52%, 60% 86%, 40% 86%, 40% 52%); opacity: .92; }
+    .th-filter::after { content: attr(data-count); position: absolute; right: -3px; top: -5px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 999px; background: #0a6f58; color: #fff; font-size: 9px; line-height: 13px; font-weight: 800; box-shadow: 0 0 0 2px #fbfcfb; }
+    .th-filter[data-count=""]::after { content: none; }
+    .th-filter:hover { border-color: #c7d3ea; background: #f8fbff; color: #1f3b73; }
+    .th-filter.active { border-color: #9db7e8; background: #eef5ff; color: #1f3b73; font-weight: 800; }
+    .col-popover { position: fixed; z-index: 50; width: 280px; max-height: 420px; overflow: hidden; background: #fff; border: 1px solid #cfd8ea; border-radius: 12px; box-shadow: 0 18px 45px rgba(15, 23, 42, .18); display: none; }
+    .col-popover.open { display: block; }
+    .pop-head { padding: 10px; border-bottom: 1px solid #edf1f8; display: grid; gap: 8px; }
+    .pop-title { font-weight: 800; color: #1f2d3d; font-size: 13px; }
+    .pop-search { width: 100%; border: 1px solid #c9d2e3; border-radius: 8px; padding: 7px 8px; font-size: 13px; }
+    .pop-actions { display: flex; gap: 6px; }
+    .pop-btn { border: 1px solid #c7d3ea; background: #fff; border-radius: 7px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
+    .pop-options { max-height: 280px; overflow: auto; padding: 6px 8px 10px; }
+    .pop-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 2px; font-size: 12px; }
+    .pop-option label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+    .pop-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pop-count { color: #64748b; white-space: nowrap; }
+    body {
+      background:
+        linear-gradient(180deg, rgba(10,111,88,.08), transparent 260px),
+        #f6f8f7;
+      color: #1f2d29;
+    }
+    .container {
+      width: min(1480px, calc(100vw - 36px));
+      max-width: none;
+      padding: 22px 0 40px;
+    }
+    .topbar {
+      align-items: flex-end;
+      margin-bottom: 14px;
+    }
+    h1 {
+      letter-spacing: -.3px;
+    }
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 25;
+      border-radius: 16px;
+      border-color: #dfe7e3;
+      box-shadow: 0 12px 30px rgba(31,45,41,.08);
+      background: rgba(255,255,255,.96);
+      backdrop-filter: blur(8px);
+    }
+    .summary {
+      align-items: center;
+    }
+    .chip {
+      border-color: #dfe7e3;
+      background: #ffffff;
+    }
+    .table-shell {
+      width: 100%;
+      overflow: auto;
+      border: 1px solid #dfe7e3;
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 12px 30px rgba(31,45,41,.06);
+    }
+    table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: max-content;
+      min-width: 100%;
+      table-layout: auto;
+      border: 0;
+      border-radius: 0;
+      background: #fff;
+      box-shadow: none;
+    }
+    colgroup col { width: auto !important; }
+    thead th {
+      position: static;
+      top: auto;
+      z-index: auto;
+      background: #fbfcfb;
+      border-bottom: 1px solid #dfe7e3;
+    }
+    thead th,
+    tbody td {
+      overflow: visible;
+    }
+    tbody td {
+      word-break: keep-all;
+      white-space: nowrap;
+    }
+    tbody tr:hover {
+      background: #f8fbfa;
+    }
+    .home-link {
+      color: #0a6f58;
+      border-color: #bddbd1;
+      background: #fff;
+    }
+    .home-link:hover {
+      background: #e8f4ef;
+    }
+    .th-sort {
+      color: #1f2d29;
+    }
+    .sort-mark.active,
+    .th-filter:hover,
+    .th-filter.active {
+      color: #0a6f58;
+    }
+    .th-filter.active {
+      border-color: #aacbc1;
+      background: #e8f4ef;
+    }
+    .col-popover {
+      border-color: #c7ddd6;
+      box-shadow: 0 18px 45px rgba(31,45,41,.18);
+    }
+    .btn,
+    .pop-btn {
+      border-color: #bddbd1;
+    }
+    .btn:hover,
+    .pop-btn:hover {
+      background: #e8f4ef;
+    }
+    .overview-cell { display: grid; gap: 4px; min-width: 0; }
+    .overview-base { font-weight: 750; color: #1f2d29; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .overview-detail { font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .enterprise-summary-line { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; white-space: nowrap; }
+    .enterprise-metric { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--success-border); background: var(--success-bg); color: var(--ok); border-radius: 999px; padding: 2px 7px; font-size: 12px; font-weight: 700; }
+    .enterprise-metric.warn { border-color: var(--warning-border); background: var(--warning-bg); color: var(--warning-text); }
+    .enterprise-metric .metric-label { color: inherit; opacity: .82; }
+    .detail-link { font-weight: 750; }
+    .nowrap { white-space: nowrap; }
+    a { color: #1e40af; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .muted { color: var(--muted); }
+    .status-ok { color: var(--ok); font-weight: 600; }
+    .status-warn { color: var(--warn); font-weight: 600; }
+    .status-bad { color: var(--bad); font-weight: 600; }
+    .method-block { margin-top: 12px; }
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+    .card h2 { margin: 0 0 8px; font-size: 15px; }
+    .kv { font-size: 13px; display: grid; grid-template-columns: 82px 1fr; column-gap: 8px; row-gap: 6px; }
+    .kv .k { color: #64748b; }
+    .kv .v { font-weight: 600; word-break: break-all; }
+    .field-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+    .badge { background: var(--chip); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: #3730a3; }
+    .method-title { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .method-title .name { font-weight: 700; }
+    .small { font-size: 12px; color: #64748b; }
+    .btn { display: inline-block; border: 1px solid #c7d3ea; background: #fff; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+    pre { white-space: pre-wrap; background: #f8fafc; border: 1px solid #e5eaf2; padding: 8px; border-radius: 8px; font-size: 12px; max-height: 260px; overflow: auto; }
+    .img-wrap { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; padding: 6px; }
+    .img-wrap img { max-width: 100%; display: block; border-radius: 6px; }
+    .footer { color: #64748b; font-size: 12px; margin-top: 12px; }
+    .filter-panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 12px; }
+    .filter-title { font-size: 13px; color: #374151; font-weight: 600; margin-bottom: 8px; }
+    .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+    .filter-col { border: 1px solid #dce4f3; border-radius: 8px; background: #fbfdff; padding: 6px 8px; max-height: 220px; overflow: auto; }
+    .filter-col summary { font-size: 12px; color: #334155; cursor: pointer; font-weight: 600; }
+    .filter-col .opt-item { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
+    .filter-col .opt-item input { margin: 0; }
+    .filter-col .opt-item label { display: flex; gap: 6px; align-items: center; width: 100%; cursor: pointer; }
+    .filter-count { color: var(--muted); font-size: 11px; margin-left: 6px; }
+    .filter-summary { font-size: 12px; color: #334155; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .filter-summary .chip { margin: 0; }
+
+    /* Phase 1 visual refresh: paper audit list */
+    :root {
+      --bg: #F8F6F0;
+      --bg-soft: #F3F0E8;
+      --card: #FFFDF8;
+      --card-white: #FFFFFF;
+      --line: #E6E0D4;
+      --text: #2F2A24;
+      --muted: #7B746A;
+      --soft: #A9A196;
+      --ok: #4F7A5F;
+      --bad: #B46458;
+      --warn: #9A7A3F;
+      --chip: #F1F6F3;
+      --primary: #7F9D8C;
+      --primary-hover: #6F8E7E;
+      --primary-soft: #E7F0EA;
+      --success-bg: #E8F3EC;
+      --success-border: #CFE3D6;
+      --warning-bg: #F9F0D8;
+      --warning-text: #A77728;
+      --warning-border: #EEDCA8;
+      --danger-bg: #F8E7E3;
+      --danger-border: #EAC8C1;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 10% 2%, rgba(221,235,226,.75), transparent 260px),
+        radial-gradient(circle at 96% 8%, rgba(216,185,154,.20), transparent 300px),
+        #F8F6F0;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .container {
+      width: min(1500px, calc(100vw - 48px));
+      padding: 30px 0 48px;
+    }
+
+    h1 {
+      font-family: var(--font-ui);
+      font-size: 28px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .small,
+    .muted {
+      color: var(--muted);
+    }
+
+    .toolbar {
+      top: 10px;
+      border-radius: 22px;
+      border-color: var(--line);
+      background: rgba(255,253,248,.94);
+      box-shadow: 0 10px 32px rgba(62,54,43,.055);
+    }
+
+    .toolbar input[type="text"],
+    .toolbar select {
+      border-color: var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--text);
+    }
+
+    .toolbar input[type="text"]:focus,
+    .toolbar select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(221,235,226,.85);
+    }
+
+    .toolbar .sep {
+      background: var(--line);
+    }
+
+    .chip {
+      border-color: var(--line);
+      background: rgba(255,253,248,.88);
+      color: var(--muted);
+    }
+
+    .home-link,
+    .btn,
+    .pop-btn {
+      border-radius: 999px;
+      border-color: var(--line);
+      background: #FFFDF8;
+      color: #5F574E;
+      box-shadow: none;
+    }
+
+    .home-link:hover,
+    .btn:hover,
+    .pop-btn:hover {
+      background: var(--bg-soft);
+      text-decoration: none;
+    }
+
+    .table-shell {
+      border-color: var(--line);
+      border-radius: 22px;
+      background: rgba(255,253,248,.94);
+      box-shadow: 0 10px 32px rgba(62,54,43,.055);
+    }
+
+    table {
+      background: transparent;
+    }
+
+    thead th {
+      background: rgba(243,240,232,.70);
+      color: var(--muted);
+      border-bottom-color: #EEE8DC;
+      font-weight: 650;
+    }
+
+    tbody td {
+      border-bottom-color: #EEE8DC;
+      background: rgba(255,253,248,.68);
+    }
+
+    tbody tr:hover td {
+      background: #F9F7F1;
+    }
+
+    .th-sort {
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .sort-mark.active,
+    .th-filter:hover,
+    .th-filter.active {
+      color: var(--primary);
+    }
+
+    .th-filter.active {
+      border-color: #CFE3D6;
+      background: var(--primary-soft);
+    }
+
+    .col-popover {
+      border-color: var(--line);
+      border-radius: 18px;
+      background: #FFFDF8;
+      box-shadow: 0 18px 42px rgba(62,54,43,.13);
+    }
+
+    .pop-head {
+      border-bottom-color: #EEE8DC;
+    }
+
+    .pop-search {
+      border-color: var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+    }
+
+    .status-ok { color: var(--ok); }
+    .status-warn { color: var(--warn); }
+    .status-bad { color: var(--bad); }
+
+    .badge {
+      border: 1px solid var(--warning-border);
+      background: var(--warning-bg);
+      color: var(--warning-text);
+    }
+
+    .overview-base {
+      color: var(--text);
+    }
+
+    .overview-detail {
+      color: var(--muted);
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+      gap: 10px;
+      margin: 12px 0 14px;
+    }
+
+    .agg-card {
+      appearance: none;
+      display: grid;
+      gap: 4px;
+      min-height: 74px;
+      padding: 11px 13px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,253,248,.92);
+      color: var(--text);
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(62,54,43,.045);
+      transition: transform .16s ease, border-color .16s ease, background .16s ease;
+    }
+
+    .agg-card:hover {
+      transform: translateY(-1px);
+      background: #FFFDF8;
+      border-color: #D9D1C4;
+    }
+
+    .agg-card.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      box-shadow: inset 0 0 0 1px rgba(127,157,140,.20), 0 10px 26px rgba(62,54,43,.06);
+    }
+
+    .agg-card strong {
+      font-size: 25px;
+      line-height: 1;
+      letter-spacing: -.5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .agg-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .agg-card.ok strong { color: var(--ok); }
+    .agg-card.warn strong { color: var(--warn); }
+    .agg-card.bad strong { color: var(--bad); }
+    .agg-card.primary strong { color: var(--primary); }
+
+    html.is-windows body {
+      font-family: var(--font-windows-data);
+      text-rendering: optimizeLegibility;
+    }
+
+    html.is-windows h1,
+    html.is-windows .agg-label {
+      font-family: var(--font-windows-display);
+      letter-spacing: 0;
+    }
+
+    html.is-windows table,
+    html.is-windows input,
+    html.is-windows select,
+    html.is-windows button {
+      font-family: var(--font-windows-data);
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <h1>OCR 基础信息结构化结果（列表）</h1>
+        <div class="small">支持筛选 / 排序 / 计数；点击文件名查看详情</div>
+      </div>
+      <a class="home-link" href="/">返回处理台</a>
+    </div>
+
+    <div class="toolbar">
+      <label>搜索</label>
+      <input id="q" type="text" placeholder="文件名 / 姓名 / 身份证号 / 企业/任职/参股" />
+      <div class="sep"></div>
+      <select id="methodFilter" class="legacy-sort" aria-hidden="true" tabindex="-1">
+        <option value="">全部</option>
+        <option value="paddleocr_2_7_3">paddleocr_2_7_3</option>
+        <option value="rapidocr_2_7_3">rapidocr_2_7_3</option>
+        <option value="rapidocr_isolated">rapidocr_isolated</option>
+        <option value="paddleocr_3_x">paddleocr_3_x</option>
+      </select>
+      <select id="sortField" class="legacy-sort" aria-hidden="true" tabindex="-1">
+        <option value="file_no">文件编号</option>
+        <option value="file_name">文件名</option>
+        <option value="姓名">姓名</option>
+        <option value="身份证号">身份证号</option>
+        <option value="相关企业">相关企业</option>
+        <option value="任职">任职</option>
+        <option value="参股">参股</option>
+        <option value="employment_related">任职明细</option>
+        <option value="截图日期时间">截图日期时间</option>
+        <option value="method_avg_confidence">方法平均置信</option>
+        <option value="method_min_confidence">方法最低置信</option>
+        <option value="method_max_confidence">方法最高置信</option>
+        <option value="issue_count">问题计数</option>
+        <option value="time_max">慢速(最大ms)</option>
+      </select>
+      <select id="sortDirection" class="legacy-sort" aria-hidden="true" tabindex="-1">
+        <option value="asc">升序</option>
+        <option value="desc">降序</option>
+      </select>
+      <div class="sep"></div>
+      <label><input type="checkbox" id="filterMissing" /> 任一字段缺失</label>
+      <label><input type="checkbox" id="filterConflict" /> 字段冲突</label>
+      <label><input type="checkbox" id="filterError" /> 方法报错</label>
+      <label><input type="checkbox" id="filterEmployment" /> 有任职信息</label>
+      <label><input type="checkbox" id="filterEmploymentMismatch" /> 任职不一致</label>
+      <label><input type="checkbox" id="groupByPerson" checked /> 一人多图聚合（文件编号+姓名）</label>
+      <button class="btn" id="resetBtn" type="button">清空筛选</button>
+    </div>
+
+    <div class="summary">
+      <button class="agg-card primary" type="button" data-aggregate-filter="all">
+        <span class="agg-label">总记录</span>
+        <strong id="countSummary">0</strong>
+      </button>
+      <button class="agg-card" type="button" data-aggregate-filter="visible">
+        <span class="agg-label">当前显示</span>
+        <strong id="showSummary">0</strong>
+      </button>
+      <button class="agg-card warn" type="button" data-aggregate-filter="pending">
+        <span class="agg-label">待复核</span>
+        <strong id="pendingSummary">0</strong>
+      </button>
+      <button class="agg-card warn" type="button" data-aggregate-filter="conflict">
+        <span class="agg-label">字段冲突</span>
+        <strong id="conflictSummary">0</strong>
+      </button>
+      <button class="agg-card bad" type="button" data-aggregate-filter="missing">
+        <span class="agg-label">字段缺失</span>
+        <strong id="missingSummary">0</strong>
+      </button>
+      <button class="agg-card bad" type="button" data-aggregate-filter="error">
+        <span class="agg-label">方法报错</span>
+        <strong id="errorSummary">0</strong>
+      </button>
+      <button class="agg-card warn" type="button" data-aggregate-filter="employment_mismatch">
+        <span class="agg-label">任职不一致</span>
+        <strong id="employmentMismatchSummary">0</strong>
+      </button>
+      <button class="agg-card ok" type="button" data-aggregate-filter="employment">
+        <span class="agg-label">有任职信息</span>
+        <strong id="employmentSummary">0</strong>
+      </button>
+    </div>
+
+    <div id="filterSummary" class="filter-summary"></div>
+    <div class="filter-panel">
+      <div class="filter-title">字段筛选（多选，支持计数）</div>
+      <div id="columnFilterPanel" class="filter-grid"></div>
+    </div>
+    <div id="columnFilterPopover" class="col-popover"></div>
+
+    <div class="table-shell">
+    <table>
+      <colgroup>
+        <col style="width: 280px" />
+        <col style="width: 82px" />
+        <col style="width: 78px" />
+        <col style="width: 148px" />
+        <col style="width: 128px" />
+        <col style="width: 260px" />
+        <col style="width: 58px" />
+        <col style="width: 92px" />
+        <col style="width: 58px" />
+        <col style="width: 160px" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="sort-filter-th" data-sort-key="file_name" data-filter-key="file_name"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">文件名</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+          <th class="sort-filter-th" data-sort-key="file_no" data-filter-key="file_no"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">编号</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+          <th class="sort-filter-th" data-sort-key="姓名" data-filter-key="姓名"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">姓名</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+          <th class="sort-filter-th" data-sort-key="身份证号" data-filter-key="身份证号"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">身份证号</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+          <th class="sort-filter-th" data-sort-key="截图日期时间" data-filter-key="截图日期时间"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">截图时间</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+        <th class="sort-filter-th" data-sort-key="employment_related" data-filter-key="企业概览"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">企业概览</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+        <th class="sort-filter-th" data-sort-key="photo_count" data-filter-key="照片数"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">张数</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+        <th class="sort-filter-th" data-sort-key="method_avg_confidence" data-filter-key="方法平均置信"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">置信度</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+        <th class="sort-filter-th" data-sort-key="issue_count" data-filter-key="问题"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">问题</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+        <th class="sort-filter-th" data-sort-key="状态" data-filter-key="状态"><div class="th-wrap"><button class="th-sort" type="button"><span class="th-label">状态</span><span class="sort-mark"></span></button><button class="th-filter" type="button" aria-label="字段筛选" data-count=""></button></div></th>
+      </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    </div>
+
+    <div class="footer">Generated: <span id="genAt">-</span></div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="employment_data.js"></script>
+  <script>
+    const DATA = OCR_REPORT;
+    const rows = DATA.rows || [];
+    const personGroupSizeMap = new Map();
+    for (const row of rows) {
+      const key = rawPersonGroupKey(row);
+      if (!key) continue;
+      personGroupSizeMap.set(key, (personGroupSizeMap.get(key) || 0) + 1);
+    }
+
+    function rawPersonGroupKey(r) {
+      const fileNo = toText(r && (r.file_no || parseFileNoFromName(r.file_name || r.filename || '')));
+      const person = toText(r && (r.file_name_from_filename || parsePersonFromName(r.file_name || r.filename || '')));
+      if (!fileNo || !person) return '';
+      return `${fileNo}|||${person}`;
+    }
+
+    const STORAGE_KEY = 'ocr_list_filter_state_v1';
+    const REVIEW_KEY = 'ocr_manual_review_v1';
+    const LIST_STATE_KEY = 'ocr_list_last_view_rows_v1';
+    document.getElementById('genAt').textContent = DATA.meta && DATA.meta.generated_at ? DATA.meta.generated_at : '-';
+
+    (function ensureHomeLink() {
+      return;
+    })();
+
+    function toText(x) { return (x || '').toString().normalize('NFKC').trim(); }
+
+    const EMPLOYMENT = window.OCR_EMPLOYMENT || {};
+    const EMP_RECONCILE = new Map((EMPLOYMENT.reconcile_rows || []).map((r) => [toText(r['人员键']), r]));
+    const EMP_PERSON_ROWS = EMPLOYMENT.person_rows || [];
+    const EMP_ROWS_BY_KEY = new Map();
+    for (const row of EMP_PERSON_ROWS) {
+      const key = toText(row['人员键']);
+      if (!EMP_ROWS_BY_KEY.has(key)) EMP_ROWS_BY_KEY.set(key, []);
+      EMP_ROWS_BY_KEY.get(key).push(row);
+    }
+
+    function employmentPersonKey(r) {
+      const no = resolveFileNo(r);
+      const person = resolvePerson(r);
+      if (no && person) return `${no}-${person}`;
+      return person || no || '';
+    }
+
+    function employmentReconcileForRecord(r) {
+      return EMP_RECONCILE.get(employmentPersonKey(r)) || null;
+    }
+
+    function employmentRowsForRecord(r) {
+      return EMP_ROWS_BY_KEY.get(employmentPersonKey(r)) || [];
+    }
+
+    function employmentNumber(row, key) {
+      const n = Number(row && row[key]);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function employmentHasAny(r) {
+      const row = employmentReconcileForRecord(r);
+      if (employmentRowsForRecord(r).length > 0) return true;
+      return employmentNumber(row, '相关企业数_基础') > 0
+        || employmentNumber(row, '相关企业数_明细') > 0
+        || employmentNumber(row, '任职企业数_基础') > 0
+        || employmentNumber(row, '参股企业数_基础') > 0;
+    }
+
+    function employmentBadgeText(r) {
+      const row = employmentReconcileForRecord(r);
+      if (!row && !employmentRowsForRecord(r).length) return '—';
+      const baseRelated = employmentNumber(row, '相关企业数_基础');
+      const baseJob = employmentNumber(row, '任职企业数_基础');
+      const baseShare = employmentNumber(row, '参股企业数_基础');
+      const detailRelated = employmentNumber(row, '相关企业数_明细');
+      const detailJob = employmentNumber(row, '任职企业数_明细');
+      const detailShare = employmentNumber(row, '参股企业数_明细');
+      if (!baseRelated && !baseJob && !baseShare && !detailRelated && !detailJob && !detailShare) {
+        return '无任职企业明细';
+      }
+      const related = `${employmentNumber(row, '相关企业数_明细')}/${employmentNumber(row, '相关企业数_基础')}`;
+      const job = `${employmentNumber(row, '任职企业数_明细')}/${employmentNumber(row, '任职企业数_基础')}`;
+      const share = `${employmentNumber(row, '参股企业数_明细')}/${employmentNumber(row, '参股企业数_基础')}`;
+      return `企 ${related} · 任 ${job} · 参 ${share}`;
+    }
+
+    function employmentIsCountOk(r) {
+      const row = employmentReconcileForRecord(r);
+      if (!row) return false;
+      return row['相关企业数_一致'] === '是' && row['任职企业数_一致'] === '是' && row['参股企业数_一致'] === '是';
+    }
+
+    function employmentNeedsReview(r) {
+      return employmentHasAny(r) && !employmentIsCountOk(r);
+    }
+
+    function employmentSearchText(r) {
+      return employmentRowsForRecord(r).map((row) => [
+        row['企业名称'],
+        row['经营状态'],
+        row['承担职务'],
+        row['持股比例'],
+      ].map(toText).join(' ')).join(' ').toLowerCase();
+    }
+
+    function fieldValue(r, field) {
+      return toText((r.field_consensus && r.field_consensus[field] && r.field_consensus[field].value) || '');
+    }
+
+    function fieldStatus(r, field) {
+      return toText((r.field_consensus && r.field_consensus[field] && r.field_consensus[field].status) || '');
+    }
+
+    function enterpriseOverviewBaseText(r) {
+      return `相关 ${fieldValue(r, '相关企业') || '—'} · 任职 ${fieldValue(r, '任职') || '—'} · 参股 ${fieldValue(r, '参股') || '—'}`;
+    }
+
+    function enterpriseOverviewText(r) {
+      const detail = employmentBadgeText(r);
+      return detail && detail !== '—' ? `${enterpriseOverviewBaseText(r)} / ${detail}` : enterpriseOverviewBaseText(r);
+    }
+
+    function employmentMetricSummary(r, label, detailKey, baseKey) {
+      const row = employmentReconcileForRecord(r);
+      const detail = employmentNumber(row, detailKey);
+      const base = employmentNumber(row, baseKey);
+      return { label, detail, base, ok: detail === base };
+    }
+
+    function renderEnterpriseMetric(metric) {
+      const cls = metric.ok ? '' : ' warn';
+      return `<span class="enterprise-metric${cls}" title="${escapeHtml(metric.label)} 明细/基础：${metric.detail}/${metric.base}"><span class="metric-label">${escapeHtml(metric.label)}</span>${metric.detail}/${metric.base}</span>`;
+    }
+
+    function renderEnterpriseOverviewCell(r, overviewBase, overviewDetail) {
+      if (isEmptyEnterpriseOverview(overviewBase, overviewDetail)) {
+        return '<div class="overview-cell"><span class="overview-base">无任职企业明细</span></div>';
+      }
+      if (employmentHasAny(r)) {
+        const metrics = [
+          employmentMetricSummary(r, '企', '相关企业数_明细', '相关企业数_基础'),
+          employmentMetricSummary(r, '任', '任职企业数_明细', '任职企业数_基础'),
+          employmentMetricSummary(r, '参', '参股企业数_明细', '参股企业数_基础'),
+        ];
+        return `
+          <div class="overview-cell">
+            <div class="enterprise-summary-line">
+              ${metrics.map(renderEnterpriseMetric).join('')}
+            </div>
+          </div>
+        `;
+      }
+      return `
+        <div class="overview-cell">
+          <span class="overview-base">${escapeHtml(overviewBase)}</span>
+          <span class="overview-detail">${escapeHtml(overviewDetail && overviewDetail !== '—' ? overviewDetail : '无企业明细')}</span>
+        </div>
+      `;
+    }
+
+    function isEmptyEnterpriseOverview(baseText, detailText) {
+      const base = toText(baseText).replace(/\s+/g, '');
+      const detail = toText(detailText).replace(/\s+/g, '');
+      const baseZero = /(相关0|相关企业0)/.test(base) && /任职0/.test(base) && /参股0/.test(base);
+      const detailEmpty = !detail || detail === '—' || detail === '无企业明细' || detail === '无任职企业明细' || (
+        /0\/0/.test(detail) && /任职0\/0/.test(detail) && /参股0\/0/.test(detail)
+      );
+      return baseZero && detailEmpty;
+    }
+
+    function enterpriseOverviewClass(r) {
+      const statuses = ['相关企业', '任职', '参股'].map((f) => fieldStatus(r, f));
+      if (statuses.includes('missing')) return 'status-bad';
+      if (statuses.includes('conflict')) return 'status-warn';
+      if (employmentHasAny(r) && !employmentIsCountOk(r)) return 'status-warn';
+      return 'status-ok';
+    }
+
+    const tb = document.getElementById('tbody');
+    const qInput = document.getElementById('q');
+    const methodFilter = document.getElementById('methodFilter');
+    const sortField = document.getElementById('sortField');
+    const sortDirection = document.getElementById('sortDirection');
+    const filterMissing = document.getElementById('filterMissing');
+    const filterConflict = document.getElementById('filterConflict');
+    const filterError = document.getElementById('filterError');
+    const filterEmployment = document.getElementById('filterEmployment');
+    const filterEmploymentMismatch = document.getElementById('filterEmploymentMismatch');
+    const groupByPerson = document.getElementById('groupByPerson');
+    const resetBtn = document.getElementById('resetBtn');
+    const filterSummary = document.getElementById('filterSummary');
+    const columnFilterPanel = document.getElementById('columnFilterPanel');
+    const columnFilterPopover = document.getElementById('columnFilterPopover');
+
+    const sTotal = document.getElementById('countSummary');
+    const sShow = document.getElementById('showSummary');
+    const sConflict = document.getElementById('conflictSummary');
+    const sMissing = document.getElementById('missingSummary');
+    const sError = document.getElementById('errorSummary');
+    const sEmployment = document.getElementById('employmentSummary');
+    const sPending = document.getElementById('pendingSummary');
+    const sEmploymentMismatch = document.getElementById('employmentMismatchSummary');
+    let activeAggregateFilter = 'all';
+
+    const activeColumnFilters = {};
+    let columnFilterSignature = '';
+    let renderTimer = null;
+    let currentHeaderBaseRows = [];
+    let openFilterKey = '';
+    const groupRecordCache = new Map();
+
+    function normalizeCell(cell) {
+      if (!cell || typeof cell !== 'object') return { value: '', status: 'missing' };
+      return cell;
+    }
+
+    const ID_PREFIX3_ALLOWED = /^(11[0-9]|12[0-9]|13[0-9]|14[0-9]|15[0-9]|21[0-9]|22[0-9]|23[0-9]|31[0-9]|32[0-9]|33[0-9]|34[0-9]|35[0-9]|36[0-9]|37[0-9]|41[0-9]|42[0-9]|43[0-9]|44[0-9]|45[0-9]|46[0-9]|50[0-9]|51[0-9]|52[0-9]|53[0-9]|54[0-9]|61[0-9]|62[0-9]|63[0-9]|64[0-9]|65[0-9]|71[0-9]|81[0-9]|82[0-9])$/;
+
+    function isValidPrefix3(prefix3) {
+      return ID_PREFIX3_ALLOWED.test(prefix3);
+    }
+
+    function normalizeMaskedTail(tailRaw) {
+      const tail = toText(tailRaw).toUpperCase().replace(/[^0-9X]/g, '');
+      if (!tail || tail.length < 4) return '';
+      const v = tail.slice(-4);
+      if (!/^[0-9X]{4}$/.test(v)) return '';
+      if (v.includes('X') && v[3] !== 'X') {
+        const withoutX = v.replace(/X/g, '');
+        if (withoutX.length === 3) return `${withoutX}X`;
+      }
+      return v;
+    }
+
+    function scoreIdCandidate(prefix3, raw) {
+      let score = isValidPrefix3(prefix3) ? 120 : 30;
+      if (/^\d{3}\*{8}[0-9X]{4}$/.test(raw)) score += 90;
+      if (raw.length === 15) score += 20;
+      return score;
+    }
+
+    function extractIdCandidates(s) {
+      const norm = toText(s).toUpperCase().replace(/[：:；;，,。\\.，]/g, ' ');
+      const cands = new Set();
+      const tokens = norm.split(/[\s]+/).filter(Boolean);
+      for (const token of tokens) {
+        const compact = token.replace(/[^0-9X*]/g, '');
+        if (!compact) continue;
+        if (compact.length <= 15) {
+          cands.add(compact);
+          continue;
+        }
+        for (const n of [15, 17, 18]) {
+          if (compact.length < n) continue;
+          for (let i = 0; i + n <= compact.length; i += 1) {
+            cands.add(compact.slice(i, i + n));
+          }
+        }
+      }
+      return Array.from(cands);
+    }
+
+    function normalizeIdValue(v) {
+      const s = toText(v);
+      if (!s) return '';
+
+      const candidates = extractIdCandidates(s);
+      if (!candidates.length) return '';
+
+      let best = '';
+      let bestScore = -1;
+
+      for (const raw of candidates) {
+        const compact = toText(raw).toUpperCase().replace(/[^0-9X*]/g, '');
+        if (!compact) continue;
+
+        const variants = new Set([compact]);
+        for (const n of [15, 17, 18]) {
+          if (compact.length < n) continue;
+          for (let i = 0; i + n <= compact.length; i += 1) {
+            variants.add(compact.slice(i, i + n));
+          }
+        }
+
+        for (const variant of variants) {
+          if (variant.length < 15) continue;
+          const prefix3 = variant.slice(0, 3);
+          if (!/^\d{3}$/.test(prefix3)) continue;
+          const tail = normalizeMaskedTail(variant.slice(-4));
+          if (!tail) continue;
+          const normalized = `${prefix3}********${tail}`;
+          const score = scoreIdCandidate(prefix3, variant);
+          if (score > bestScore) {
+            bestScore = score;
+            best = normalized;
+          }
+        }
+      }
+
+      if (!best) {
+        const digitsOrX = s.toUpperCase().replace(/[^0-9X]/g, '');
+        const fallbackPrefix = digitsOrX.slice(0, 3);
+        const fallbackTail = normalizeMaskedTail(digitsOrX.slice(-4));
+        if (/^\d{3}$/.test(fallbackPrefix) && fallbackTail) {
+          best = `${fallbackPrefix}********${fallbackTail}`;
+        }
+      }
+
+      return best || '';
+    }
+
+    function captureDateTimeText(dateRaw, timeRaw) {
+      const date = displayDateValue(dateRaw);
+      const time = toText(timeRaw);
+      return [date, time].filter(Boolean).join(' ');
+    }
+
+    function captureDateTimeFromRecord(r) {
+      const ui = r && r.__ui;
+      if (ui && ui.capDateTimeText !== undefined) return ui.capDateTimeText;
+      const capture = r.capture_consensus || {};
+      return captureDateTimeText(
+        capture['截图日期'] && capture['截图日期'].value,
+        capture['截图时间'] && capture['截图时间'].value
+      );
+    }
+
+    function captureDateTimeStatus(dateCell, timeCell) {
+      const dateStatus = toText(dateCell && dateCell.status);
+      const timeStatus = toText(timeCell && timeCell.status);
+      if (dateStatus === 'missing' || timeStatus === 'missing') return 'missing';
+      if (dateStatus === 'conflict' || timeStatus === 'conflict') return 'conflict';
+      return 'agree';
+    }
+
+    const COLUMN_FILTERS = [
+      { key: 'file_name', label: '文件名', getter: (r) => ensureUiCache(r).fileTitle },
+      { key: 'file_no', label: '文件编号', getter: (r) => ensureUiCache(r).fileNo },
+      { key: '姓名', label: '姓名', getter: (r) => ensureUiCache(r).nameValue },
+      { key: '身份证号', label: '身份证号', getter: (r) => ensureUiCache(r).idValue },
+      { key: '截图日期时间', label: '截图日期时间', getter: (r) => ensureUiCache(r).capDateTimeText },
+      { key: '企业概览', label: '企业概览', getter: (r) => ensureUiCache(r).enterpriseText },
+      { key: '照片数', label: '照片数', getter: (r) => ensureUiCache(r).photoCountText },
+      { key: '方法平均置信', label: '方法平均置信', getter: (r) => ensureUiCache(r).methodAvgText },
+      { key: '问题', label: '问题', getter: (r) => String(r.issue_count || 0) },
+      { key: '状态', label: '状态', getter: (r) => getDisplayStatus(r) },
+    ];
+
+    function statusToWord(status) {
+      if (status === 'missing') return '缺失';
+      if (status === 'conflict') return '冲突';
+      return '';
+    }
+
+    function statusSuffix(status) {
+      const word = statusToWord(status);
+      return word ? `<span class="small"> ${word}</span>` : '';
+    }
+
+    function displayDateValue(value) {
+      const v = toText(value);
+      const compact = v.replace(/[-/]/g, '');
+      if (/^\d{4}$/.test(compact)) return `${compact.slice(0, 2)}-${compact.slice(2)}`;
+      return v;
+    }
+
+    function statusClass(c) {
+      if (c === 'missing') return 'status-bad';
+      if (c === 'conflict') return 'status-warn';
+      return 'status-ok';
+    }
+
+    function normalizeFilterValue(v) {
+      const s = toText(v);
+      return s || '—';
+    }
+
+    function getDisplayStatus(r) {
+      if (rowIsReviewFailed(r)) return '复核不通过';
+      if (rowIsReviewed(r)) return '正常（复核）';
+      if (getConflictCountForDisplay(r) > 0 || getMissingCountForDisplay(r) > 0 || getErrorForDisplay(r) || employmentNeedsReview(r)) return '待复核';
+      return '正常';
+    }
+
+    const PERSON_NOISE = new Set([
+      '无经商办企业',
+      '无经商办企',
+      '有经商办企业',
+      '经商办企业',
+      '新增经商办企业',
+      '无新增经商办企业',
+      '无新增办企业',
+      '无新增',
+      '经商办企截图',
+      '经商办企',
+      '投资任职信息查询',
+      '投资任职情况查询',
+      '投资任职情况',
+      '投资任职信息',
+      '龙信图片',
+      '图片',
+      '截图',
+      '自查',
+      '龙信',
+      '注销',
+      '已注销',
+      '未注销',
+      '吊销',
+      '存续',
+      '开业',
+      '在业',
+      '迁出',
+      '撤销',
+      '停业',
+      '相关企业',
+      '任职',
+      '参股',
+      '查询结论',
+      '未查询到',
+      '本查询结果',
+    ]);
+
+    function isValidPersonName(value) {
+      const name = toText(value);
+      if (!/^[\u4e00-\u9fff]{2,4}$/.test(name)) return false;
+      if (PERSON_NOISE.has(name)) return false;
+      for (const token of PERSON_NOISE) {
+        if (token.length >= 2 && name.includes(token)) return false;
+      }
+      return true;
+    }
+
+    function cleanPersonCandidate(value) {
+      let raw = toText(value);
+      if (!raw) return '';
+      const tokens = Array.from(PERSON_NOISE).sort((a, b) => b.length - a.length);
+      for (const token of tokens) raw = raw.split(token).join(' ');
+      raw = raw.replace(/^\d{6,20}/, '');
+      const chunks = raw.match(/[\u4e00-\u9fff]{2,8}/g) || [];
+      for (let i = chunks.length - 1; i >= 0; i -= 1) {
+        if (isValidPersonName(chunks[i])) return chunks[i];
+      }
+      return '';
+    }
+
+    function extractFileName(name) {
+      return toText(name).split(/[\\/]/).pop();
+    }
+
+    function extractFileBase(name) {
+      return extractFileName(name).replace(/\\.[^.]+$/, '');
+    }
+
+    function parseFileNoFromName(name) {
+      const base = extractFileBase(name);
+      const m = base.match(/^(\\d{6,20})(?=\\D|$)/);
+      return m ? m[1] : '';
+    }
+
+    function parsePersonFromName(name) {
+      const stem = extractFileBase(name);
+      const tokens = stem.split(/[-_+\\s]+/).map((x) => toText(x)).filter(Boolean);
+      const candidates = [];
+      for (const token of tokens) {
+        if (!token || PERSON_NOISE.has(token)) continue;
+        const direct = cleanPersonCandidate(token);
+        if (direct) candidates.push(direct);
+        const pref = token.match(/^\\d+([\u4e00-\u9fff]{2,8})$/);
+        if (pref) {
+          const prefName = cleanPersonCandidate(pref[1]);
+          if (prefName) candidates.push(prefName);
+        }
+      }
+      if (!candidates.length) {
+        const found = cleanPersonCandidate(stem);
+        if (found) candidates.push(found);
+      }
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const c = candidates[i];
+        if (isValidPersonName(c) && c.length >= 2 && c.length <= 4) return c;
+      }
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const c = candidates[i];
+        if (isValidPersonName(c) && c.length >= 2 && c.length <= 8) return c;
+      }
+      return '';
+    }
+
+    function resolvePerson(r) {
+      if (r && r.__ui && r.__ui.person !== undefined) return r.__ui.person;
+      return toText(r.file_name_from_filename || parsePersonFromName(r.file_name || r.filename || ''));
+    }
+
+    function resolveFileNo(r) {
+      if (r && r.__ui && r.__ui.fileNo !== undefined) return r.__ui.fileNo;
+      return toText(r.file_no || parseFileNoFromName(r.file_name || r.filename || ''));
+    }
+
+    function resolveRecordImageName(r) {
+      if (r && r.__ui && r.__ui.recordImageName !== undefined) return r.__ui.recordImageName;
+      return extractFileName(r.filename || r.file_name || r.file_name_from_filename || '');
+    }
+
+    function personGroupKey(r) {
+      const fileNo = resolveFileNo(r);
+      const person = resolvePerson(r);
+      if (!fileNo || !person) return '';
+      return `${fileNo}|||${person}`;
+    }
+
+    function groupMembersForRow(r) {
+      const key = personGroupKey(r);
+      if (!key) return [];
+      return rows.filter((x) => personGroupKey(x) === key);
+    }
+
+    function loadReviewMap() {
+      try {
+        const raw = localStorage.getItem(REVIEW_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch (_) {}
+      return {};
+    }
+
+    function saveReviewMap(map) {
+      localStorage.setItem(REVIEW_KEY, JSON.stringify(map || {}));
+    }
+
+    function getCurrentReviewMap() {
+      return loadReviewMap();
+    }
+
+    function getRowId(r) {
+      if (r && r.__group_mode && r.group_key) return `g:${r.group_key}`;
+      return `r:${r && Number.isInteger(r.idx) ? r.idx : ''}`;
+    }
+
+    function reviewEntry(r) {
+      const map = getCurrentReviewMap();
+      return map[getRowId(r)];
+    }
+
+    function reviewState(r) {
+      const entry = reviewEntry(r);
+      if (!entry) return '';
+      if (entry === true) return 'passed';
+      if (typeof entry === 'object') {
+        if (entry.status === 'failed') return 'failed';
+        if (entry.status === 'passed') return 'passed';
+        return 'passed';
+      }
+      return '';
+    }
+
+    function rowIsReviewed(r) {
+      return reviewState(r) === 'passed';
+    }
+
+    function rowIsReviewFailed(r) {
+      return reviewState(r) === 'failed';
+    }
+
+    function rowHasIssue(r) {
+      if (rowIsReviewed(r) || rowIsReviewFailed(r)) return false;
+      return (Number(r.conflict_count) > 0) || (Number(r.missing_count) > 0) || !!r.has_error || employmentNeedsReview(r);
+    }
+
+    function getReviewText(r) {
+      if (rowIsReviewed(r)) return '正常（复核）';
+      if (rowIsReviewFailed(r)) return '复核不通过';
+      return rowHasIssue(r) ? '待复核' : '正常';
+    }
+
+    function getConflictCountForDisplay(r) {
+      return rowIsReviewed(r) ? 0 : Number(r.conflict_count || 0);
+    }
+
+    function getMissingCountForDisplay(r) {
+      return rowIsReviewed(r) ? 0 : Number(r.missing_count || 0);
+    }
+
+    function getErrorForDisplay(r) {
+      return rowIsReviewed(r) ? false : !!r.has_error;
+    }
+
+    function getStatusClassForSummary(r) {
+      if (rowIsReviewFailed(r)) return 'status-bad';
+      if (rowIsReviewed(r)) return 'status-ok';
+      if (getConflictCountForDisplay(r) > 0) return 'status-warn';
+      if (getMissingCountForDisplay(r) > 0) return 'status-warn';
+      if (getErrorForDisplay(r)) return 'status-bad';
+      if (employmentNeedsReview(r)) return 'status-warn';
+      return 'status-ok';
+    }
+
+    function initFilterMaps() {
+      for (const def of COLUMN_FILTERS) {
+        if (!activeColumnFilters[def.key]) activeColumnFilters[def.key] = new Set();
+      }
+    }
+
+    function loadFilterState() {
+      let state = {};
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return state;
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') state = parsed;
+      } catch (_) {}
+      return state;
+    }
+
+    function saveFilterState() {
+      const state = {
+        q: qInput.value || '',
+        methodFilter: methodFilter.value || '',
+        sortField: sortField.value || 'file_name',
+        sortDirection: sortDirection.value || 'asc',
+        filterMissing: !!filterMissing.checked,
+        filterConflict: !!filterConflict.checked,
+        filterError: !!filterError.checked,
+        filterEmployment: !!filterEmployment.checked,
+        filterEmploymentMismatch: !!filterEmploymentMismatch.checked,
+        groupByPerson: !!groupByPerson.checked,
+        aggregateFilter: activeAggregateFilter || 'all',
+        columnFilters: {},
+      };
+      for (const def of COLUMN_FILTERS) {
+        const picked = activeColumnFilters[def.key];
+        if (!picked || !picked.size) continue;
+        state.columnFilters[def.key] = Array.from(picked);
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function applyFilterState() {
+      const state = loadFilterState();
+      if (!state || typeof state !== 'object') return;
+      qInput.value = toText(state.q);
+      methodFilter.value = state.methodFilter || '';
+      sortField.value = (state.sortField === '截图日期' || state.sortField === '截图时间') ? '截图日期时间' : (state.sortField || 'file_name');
+      sortDirection.value = state.sortDirection || 'asc';
+      filterMissing.checked = !!state.filterMissing;
+      filterConflict.checked = !!state.filterConflict;
+      filterError.checked = !!state.filterError;
+      filterEmployment.checked = !!state.filterEmployment;
+      filterEmploymentMismatch.checked = !!state.filterEmploymentMismatch;
+      groupByPerson.checked = state.groupByPerson !== false;
+      activeAggregateFilter = state.aggregateFilter || 'all';
+      const cf = state.columnFilters;
+      initFilterMaps();
+      for (const def of COLUMN_FILTERS) {
+        activeColumnFilters[def.key] = new Set((cf && Array.isArray(cf[def.key]) ? cf[def.key] : []));
+      }
+    }
+
+    function updateFilterSummary() {
+      const chips = [];
+      const aggregateLabels = {
+        pending: '待复核',
+        conflict: '字段冲突',
+        missing: '字段缺失',
+        error: '方法报错',
+        employment_mismatch: '任职不一致',
+        employment: '有任职信息',
+      };
+      if (activeAggregateFilter && activeAggregateFilter !== 'all' && activeAggregateFilter !== 'visible') {
+        chips.push(`<span class="chip">聚合筛选: ${escapeHtml(aggregateLabels[activeAggregateFilter] || activeAggregateFilter)}</span>`);
+      }
+      for (const def of COLUMN_FILTERS) {
+        const picked = activeColumnFilters[def.key];
+        const cnt = picked && picked.size ? picked.size : 0;
+        if (cnt > 0) {
+          chips.push(`<span class="chip">${def.label}: ${cnt}</span>`);
+        }
+      }
+      filterSummary.innerHTML = chips.length
+        ? chips.join('')
+        : '<span class="chip">未设置筛选</span>';
+    }
+
+    function getColumnValueCounts(rows, getter) {
+      const map = new Map();
+      for (const r of rows) {
+        const key = normalizeFilterValue(getter(r));
+        map.set(key, (map.get(key) || 0) + 1);
+      }
+      return map;
+    }
+
+    function rowMatchesColumnFilters(r) {
+      for (const def of COLUMN_FILTERS) {
+        const picked = activeColumnFilters[def.key];
+        if (!picked || !picked.size) continue;
+        const val = normalizeFilterValue(def.getter(r));
+        if (!picked.has(val)) return false;
+      }
+      return true;
+    }
+
+    function rowMatchesAggregateFilter(r) {
+      const key = activeAggregateFilter || 'all';
+      if (key === 'all' || key === 'visible') return true;
+      if (key === 'pending') return rowHasIssue(r);
+      if (key === 'conflict') return getConflictCountForDisplay(r) > 0;
+      if (key === 'missing') return getMissingCountForDisplay(r) > 0;
+      if (key === 'error') return !!getErrorForDisplay(r);
+      if (key === 'employment_mismatch') return !rowIsReviewed(r) && employmentNeedsReview(r);
+      if (key === 'employment') return employmentHasAny(r);
+      return true;
+    }
+
+    function setAggregateActiveState() {
+      document.querySelectorAll('[data-aggregate-filter]').forEach((btn) => {
+        btn.classList.toggle('active', (btn.dataset.aggregateFilter || 'all') === (activeAggregateFilter || 'all'));
+      });
+    }
+
+    function updateAggregateSummary(scopeRows, activeRows) {
+      const scoped = scopeRows || [];
+      const visible = activeRows || [];
+      sTotal.textContent = String(rows.length);
+      sShow.textContent = String(visible.length);
+      if (sPending) sPending.textContent = String(scoped.filter(rowHasIssue).length);
+      sConflict.textContent = String(scoped.filter(r => getConflictCountForDisplay(r) > 0).length);
+      sMissing.textContent = String(scoped.filter(r => getMissingCountForDisplay(r) > 0).length);
+      sError.textContent = String(scoped.filter(r => getErrorForDisplay(r)).length);
+      if (sEmploymentMismatch) sEmploymentMismatch.textContent = String(scoped.filter(r => !rowIsReviewed(r) && employmentNeedsReview(r)).length);
+      sEmployment.textContent = String(scoped.filter(r => employmentHasAny(r)).length);
+      setAggregateActiveState();
+    }
+
+    function columnDefByKey(key) {
+      return COLUMN_FILTERS.find((def) => def.key === key) || null;
+    }
+
+    function updateHeaderStates() {
+      const sf = sortField.value || 'file_name';
+      const sd = sortDirection.value || 'asc';
+      document.querySelectorAll('th.sort-filter-th').forEach((th) => {
+        const sortKey = th.dataset.sortKey || '';
+        const filterKey = th.dataset.filterKey || '';
+        const mark = th.querySelector('.sort-mark');
+        const filterBtn = th.querySelector('.th-filter');
+        if (mark) {
+          mark.textContent = sortKey === sf ? (sd === 'asc' ? '↑' : '↓') : '';
+          mark.classList.toggle('active', sortKey === sf);
+        }
+        const picked = activeColumnFilters[filterKey];
+        if (filterBtn) {
+          const cnt = picked && picked.size ? picked.size : 0;
+          filterBtn.classList.toggle('active', cnt > 0);
+          filterBtn.textContent = '';
+          filterBtn.dataset.count = cnt > 0 ? String(cnt) : '';
+          filterBtn.title = cnt > 0 ? `已筛选 ${cnt} 项` : '字段筛选';
+          filterBtn.setAttribute('aria-label', filterBtn.title);
+        }
+      });
+    }
+
+    function closeColumnFilterPopover() {
+      openFilterKey = '';
+      columnFilterPopover.classList.remove('open');
+      columnFilterPopover.innerHTML = '';
+    }
+
+    function renderColumnFilterPopover(def, anchor) {
+      const counts = getColumnValueCounts(currentHeaderBaseRows, def.getter);
+      const opts = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'));
+      const picked = activeColumnFilters[def.key] || new Set();
+      openFilterKey = def.key;
+
+      const optionHtml = (items) => items.map(([value, count]) => `
+        <div class="pop-option" data-value="${escapeHtml(value)}">
+          <label title="${escapeHtml(value)}">
+            <input type="checkbox" class="pop-check" data-value="${escapeHtml(value)}" ${picked.has(value) ? 'checked' : ''} />
+            <span class="pop-value">${escapeHtml(value)}</span>
+          </label>
+          <span class="pop-count">${count}</span>
+        </div>
+      `).join('');
+
+      columnFilterPopover.innerHTML = `
+        <div class="pop-head">
+          <div class="pop-title">${escapeHtml(def.label)}筛选（${picked.size || 0}/${opts.length || 0}）</div>
+          <input class="pop-search" type="search" placeholder="输入筛选项..." />
+          <div class="pop-actions">
+            <button class="pop-btn" type="button" data-action="all">全选</button>
+            <button class="pop-btn" type="button" data-action="clear">清空</button>
+            <button class="pop-btn" type="button" data-action="close">关闭</button>
+          </div>
+        </div>
+        <div class="pop-options">${optionHtml(opts)}</div>
+      `;
+
+      const rect = anchor.getBoundingClientRect();
+      const width = 280;
+      const left = Math.min(Math.max(10, rect.right - width), window.innerWidth - width - 10);
+      const top = Math.min(rect.bottom + 6, window.innerHeight - 430);
+      columnFilterPopover.style.left = `${left}px`;
+      columnFilterPopover.style.top = `${Math.max(10, top)}px`;
+      columnFilterPopover.classList.add('open');
+
+      const renderOptions = () => {
+        const keyword = toText(columnFilterPopover.querySelector('.pop-search')?.value).toLowerCase();
+        const filtered = keyword ? opts.filter(([value]) => value.toLowerCase().includes(keyword)) : opts;
+        columnFilterPopover.querySelector('.pop-options').innerHTML = optionHtml(filtered);
+        bindOptionChecks();
+      };
+
+      const bindOptionChecks = () => {
+        columnFilterPopover.querySelectorAll('.pop-check').forEach((input) => {
+          input.addEventListener('change', () => {
+            const set = activeColumnFilters[def.key] || new Set();
+            if (input.checked) set.add(input.dataset.value);
+            else set.delete(input.dataset.value);
+            activeColumnFilters[def.key] = set;
+            render(false);
+            renderColumnFilterPopover(def, anchor);
+          });
+        });
+      };
+
+      columnFilterPopover.querySelector('.pop-search').addEventListener('input', renderOptions);
+      columnFilterPopover.querySelectorAll('.pop-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          if (action === 'all') activeColumnFilters[def.key] = new Set(opts.map(([v]) => v));
+          if (action === 'clear') activeColumnFilters[def.key] = new Set();
+          if (action === 'close') {
+            closeColumnFilterPopover();
+            updateHeaderStates();
+            return;
+          }
+          render(false);
+          renderColumnFilterPopover(def, anchor);
+        });
+      });
+      bindOptionChecks();
+    }
+
+    function initHeaderInteractions() {
+      document.querySelectorAll('th.sort-filter-th').forEach((th) => {
+        const sortBtn = th.querySelector('.th-sort');
+        const filterBtn = th.querySelector('.th-filter');
+        sortBtn && sortBtn.addEventListener('click', () => {
+          const key = th.dataset.sortKey || 'file_name';
+          if (sortField.value === key) {
+            sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+          } else {
+            sortField.value = key;
+            sortDirection.value = 'asc';
+          }
+          render(false);
+        });
+        filterBtn && filterBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const key = th.dataset.filterKey || '';
+          const def = columnDefByKey(key);
+          if (!def) return;
+          if (openFilterKey === key && columnFilterPopover.classList.contains('open')) {
+            closeColumnFilterPopover();
+          } else {
+            renderColumnFilterPopover(def, filterBtn);
+          }
+        });
+      });
+      document.addEventListener('click', (ev) => {
+        if (!columnFilterPopover.classList.contains('open')) return;
+        if (columnFilterPopover.contains(ev.target) || ev.target.closest('.th-filter')) return;
+        closeColumnFilterPopover();
+        updateHeaderStates();
+      });
+    }
+
+    function mergePersonGroups(sourceRows) {
+      if (!groupByPerson.checked) return sourceRows.slice();
+
+      const groups = new Map();
+      const singles = [];
+      for (const row of sourceRows) {
+        const key = personGroupKey(row);
+        if (!key) {
+          singles.push(row);
+          continue;
+        }
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(row);
+      }
+
+      const merged = [];
+      for (const g of groups.values()) {
+        if (g.length > 1) {
+          const key = personGroupKey(g[0]);
+          if (!groupRecordCache.has(key)) groupRecordCache.set(key, buildGroupRecord(g));
+          merged.push(groupRecordCache.get(key));
+        }
+        else merged.push(g[0]);
+      }
+      merged.push(...singles);
+      return merged;
+    }
+
+    function rowMatchesTopFilters(r) {
+      const keyword = qInput.value.trim().toLowerCase();
+      const mth = methodFilter.value;
+      const showMissing = filterMissing.checked;
+      const showConflict = filterConflict.checked;
+      const showError = filterError.checked;
+      const showEmployment = filterEmployment.checked;
+      const showEmploymentMismatch = filterEmploymentMismatch.checked;
+
+      const ui = ensureUiCache(r);
+      if (keyword && !ui.searchText.includes(keyword)) return false;
+      if (showMissing && getMissingCountForDisplay(r) === 0) return false;
+      if (showConflict && getConflictCountForDisplay(r) === 0) return false;
+      if (showError && !getErrorForDisplay(r)) return false;
+      if (showEmployment && !employmentHasAny(r)) return false;
+      if (showEmploymentMismatch && !employmentNeedsReview(r)) return false;
+      if (!rowMatchesAggregateFilter(r)) return false;
+      if (mth && !hasMethodComplete(r, mth)) return false;
+      return true;
+    }
+
+    function getFilteredBaseRows() {
+      return mergePersonGroups(rows).filter(rowMatchesTopFilters);
+    }
+
+    function renderColumnFilterPanel(baseRows) {
+      const signature = baseRows.map((r) => getRowId(r)).join('|');
+      if (signature === columnFilterSignature && columnFilterPanel.children.length) {
+        updateFilterSummary();
+        return;
+      }
+      columnFilterSignature = signature;
+      columnFilterPanel.innerHTML = '';
+
+      for (const def of COLUMN_FILTERS) {
+        const counts = getColumnValueCounts(baseRows, def.getter);
+        const opts = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+        const picked = activeColumnFilters[def.key] || new Set();
+        const block = document.createElement('details');
+        block.className = 'filter-col';
+
+        const summary = document.createElement('summary');
+        summary.textContent = `${def.label}（${picked.size || 0}/${opts.length || 0}）`;
+        block.appendChild(summary);
+
+        const allWrap = document.createElement('div');
+        const allItem = document.createElement('div');
+        allItem.className = 'opt-item';
+        const allChk = document.createElement('input');
+        allChk.type = 'checkbox';
+        allChk.dataset.action = 'all';
+        allChk.dataset.key = def.key;
+        allChk.checked = picked.size > 0 && picked.size === opts.length;
+
+        const allLabel = document.createElement('label');
+        allLabel.appendChild(allChk);
+        allLabel.appendChild(document.createTextNode('全选'));
+        allItem.appendChild(allLabel);
+        allWrap.appendChild(allItem);
+
+        for (const [value, count] of opts) {
+          const item = document.createElement('div');
+          item.className = 'opt-item';
+
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.className = 'col-filter-item';
+          input.dataset.key = def.key;
+          input.dataset.value = value;
+          input.checked = picked.has(value);
+
+          const label = document.createElement('label');
+          label.appendChild(input);
+          label.appendChild(document.createTextNode(value));
+
+          const countTag = document.createElement('span');
+          countTag.className = 'filter-count';
+          countTag.textContent = `(${count})`;
+          label.appendChild(countTag);
+
+          item.appendChild(label);
+          allWrap.appendChild(item);
+        }
+
+        block.appendChild(allWrap);
+        columnFilterPanel.appendChild(block);
+
+        allChk.addEventListener('change', () => {
+          if (allChk.checked) {
+            activeColumnFilters[def.key] = new Set(opts.map(([v]) => v));
+          } else {
+            activeColumnFilters[def.key] = new Set();
+          }
+          render(false);
+        });
+
+        for (const input of allWrap.querySelectorAll('.col-filter-item')) {
+          input.addEventListener('change', () => {
+            const set = activeColumnFilters[def.key] || new Set();
+            if (input.checked) {
+              set.add(input.dataset.value);
+            } else {
+              set.delete(input.dataset.value);
+            }
+            activeColumnFilters[def.key] = set;
+            render(false);
+          });
+        }
+      }
+
+      updateFilterSummary();
+    }
+
+    const GROUP_COUNT_FIELDS = new Set(['相关企业', '任职', '参股']);
+
+    function selectCaptureValue(keys, score, field) {
+      const sorted = keys.slice().sort((a, b) => {
+        const d = (score[b] || 0) - (score[a] || 0);
+        if (d !== 0) return d;
+        if (field === '截图日期') {
+          const an = a.replace(/[-/]/g, '');
+          const bn = b.replace(/[-/]/g, '');
+          if (/^\d{4}$/.test(an) && /^\d{4}$/.test(bn)) return bn.localeCompare(an);
+        }
+        return b.localeCompare(a);
+      });
+      return sorted[0] || '';
+    }
+
+    function collectField(records, field, isCapture) {
+      const score = {};
+      for (const rec of records) {
+        const source = isCapture ? (rec.capture_consensus || {}) : (rec.field_consensus || {});
+        const cell = source[field];
+        let val = toText(cell && cell.value);
+        if (field === '身份证号') {
+          val = normalizeIdValue(val);
+        }
+        if (!val) continue;
+        score[val] = (score[val] || 0) + 1;
+      }
+      const keys = Object.keys(score);
+      if (!keys.length) {
+        return { value: '', status: 'missing', unique_count: 0 };
+      }
+      if (GROUP_COUNT_FIELDS.has(field)) {
+        const positiveNums = keys
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        if (positiveNums.length) {
+          const uniqPositive = Array.from(new Set(positiveNums)).sort((a, b) => b - a);
+          return {
+            value: String(uniqPositive[0]),
+            status: uniqPositive.length === 1 ? 'agree' : 'conflict',
+            unique_count: uniqPositive.length,
+            raw_unique_count: keys.length,
+          };
+        }
+      }
+      if (isCapture) {
+        return {
+          value: selectCaptureValue(keys, score, field),
+          status: 'agree',
+          unique_count: 1,
+          raw_unique_count: keys.length,
+        };
+      }
+      keys.sort((a, b) => {
+        const d = score[b] - score[a];
+        if (d !== 0) return d;
+        return b.localeCompare(a);
+      });
+      return {
+        value: keys[0],
+        status: keys.length === 1 ? 'agree' : 'conflict',
+        unique_count: keys.length,
+      };
+    }
+
+    function hasMethodComplete(row, method) {
+      const ensure = (obj) => {
+        if (!obj || typeof obj !== 'object') return false;
+        return ['姓名', '身份证号', '相关企业', '任职', '参股'].every((f) => toText(obj[f]) !== '');
+      };
+      const direct = row && row.methods && row.methods[method];
+      if (ensure(direct)) return true;
+      if (!row || !row.__group_mode || !Array.isArray(row.group_rows)) return false;
+      return row.group_rows.some((r) => ensure(r.methods && r.methods[method]));
+    }
+
+    function buildGroupRecord(records) {
+      const rawRows = records || [];
+      const groupRows = rawRows.slice();
+      const first = groupRows[0] || {};
+      const resolvedFileNo = resolveFileNo(first);
+      const resolvedPerson = resolvePerson(first);
+      const fieldConsensus = {};
+      const captureConsensus = {};
+      let missing_count = 0;
+      let conflict_count = 0;
+      let has_error = false;
+      let timeMax = 0;
+      let issue_count = 0;
+      const searchText = [];
+      for (const f of ['姓名', '身份证号', '相关企业', '任职', '参股']) {
+        const c = collectField(groupRows, f, false);
+        fieldConsensus[f] = c;
+        if (c.status === 'missing') missing_count += 1;
+        if (c.status === 'conflict') conflict_count += 1;
+      }
+      for (const f of ['截图日期', '截图时间']) {
+        const c = collectField(groupRows, f, true);
+        captureConsensus[f] = c;
+        if (c.status === 'missing') missing_count += 1;
+        if (c.status === 'conflict') conflict_count += 1;
+      }
+      const confVals = [];
+      const confMins = [];
+      const confMaxs = [];
+      for (const r of groupRows) {
+        has_error = has_error || !!r.has_error;
+        issue_count += Number(r.issue_count || 0);
+        if (r.time_stats && r.time_stats.max > timeMax) timeMax = r.time_stats.max;
+        for (const m of DATA.methods || []) {
+          const ms = r.method_scores && r.method_scores[m];
+          if (ms) {
+            if (Number(ms.avg_confidence)) confVals.push(Number(ms.avg_confidence));
+            if (Number(ms.min_confidence)) confMins.push(Number(ms.min_confidence));
+            if (Number(ms.max_confidence)) confMaxs.push(Number(ms.max_confidence));
+          } else if (r.methods && r.methods[m] && Number(r.methods[m].method_score && r.methods[m].method_score.avg_confidence)) {
+            confVals.push(Number(r.methods[m].method_score.avg_confidence));
+          }
+        }
+        searchText.push(r.file_name || '');
+        searchText.push(r.file_no || '');
+        searchText.push(r.file_name_from_filename || '');
+      }
+      const method_confidence = {
+        avg: confVals.length ? confVals.reduce((a, b) => a + b, 0) / confVals.length : 0,
+        min: confMins.length ? Math.min(...confMins) : 0,
+        max: confMaxs.length ? Math.max(...confMaxs) : 0,
+      };
+      return {
+        __group_mode: true,
+        group_key: personGroupKey(first),
+        filename: groupRows.map(r => r.file_name || '').join('|'),
+        file_name: `${resolvedFileNo} ${resolvedPerson}`.trim(),
+        file_no: resolvedFileNo,
+        file_name_from_filename: resolvedPerson,
+        photo_count: groupRows.length,
+        idx: first.idx,
+        duplicate_count: 0,
+        field_consensus: fieldConsensus,
+        capture_consensus: captureConsensus,
+        time_stats: { min: 0, max: timeMax, avg: 0 },
+        issues: first.issues || [],
+        issue_count,
+        has_error,
+        missing_count,
+        conflict_count,
+        method_confidence,
+        search: searchText.join(' ').toLowerCase(),
+        group_rows: groupRows,
+      };
+    }
+
+    function ensureUiCache(r) {
+      if (!r || typeof r !== 'object') return {};
+      if (r.__ui) return r.__ui;
+
+      const fieldConsensus = r.field_consensus || {};
+      const captureConsensus = r.capture_consensus || {};
+      const nameCell = normalizeCell(fieldConsensus['姓名']);
+      const idCell = normalizeCell(fieldConsensus['身份证号']);
+      const capDate = normalizeCell(captureConsensus['截图日期']);
+      const capTime = normalizeCell(captureConsensus['截图时间']);
+      const fileNo = toText(r.file_no || parseFileNoFromName(r.file_name || r.filename || ''));
+      const person = toText(r.file_name_from_filename || parsePersonFromName(r.file_name || r.filename || ''));
+      const recordImageName = extractFileName(r.filename || r.file_name || r.file_name_from_filename || '');
+      const overviewBase = enterpriseOverviewBaseText(r);
+      const overviewDetail = employmentBadgeText(r);
+      const directGroupKey = r.__group_mode && r.group_key ? r.group_key : (fileNo && person ? `${fileNo}|||${person}` : '');
+      const directGroupSize = r.__group_mode ? (r.group_rows || []).length : (personGroupSizeMap.get(directGroupKey) || 0);
+      const detailRowId = getRowId(r);
+      const detailHref = directGroupKey && directGroupSize > 1
+        ? `detail.html?group=${encodeURIComponent(directGroupKey)}&rowId=${encodeURIComponent(`g:${directGroupKey}`)}`
+        : `detail.html?idx=${r.idx}&rowId=${encodeURIComponent(detailRowId)}&file=${encodeURIComponent(recordImageName)}`;
+      const fileTitle = r.__group_mode
+        ? `${toText(`${fileNo} ${person}`)} ${r.photo_count || 1}张`
+        : toText(recordImageName);
+
+      r.__ui = {
+        fieldConsensus,
+        captureConsensus,
+        nameCell,
+        idCell,
+        nameValue: toText(nameCell.value || ''),
+        idValue: normalizeIdValue(idCell.value || ''),
+        capDate,
+        capTime,
+        capDateTimeStatus: captureDateTimeStatus(capDate, capTime),
+        capDateTimeText: captureDateTimeText(capDate.value, capTime.value),
+        fileNo,
+        person,
+        recordImageName,
+        detailHref,
+        fileTitle,
+        overviewBase,
+        overviewDetail,
+        overviewHtml: renderEnterpriseOverviewCell(r, overviewBase, overviewDetail),
+        overviewClass: enterpriseOverviewClass(r),
+        enterpriseText: enterpriseOverviewText(r),
+        methodAvgText: `${Number(((r.method_confidence && r.method_confidence.avg) || 0) * 100).toFixed(2)}%`,
+        photoCountText: String(r.photo_count || 1),
+        searchText: `${toText(r.search)} ${employmentSearchText(r)}`.toLowerCase(),
+      };
+      return r.__ui;
+    }
+
+    function getActiveRows() {
+      return getFilteredBaseRows().filter(rowMatchesColumnFilters);
+    }
+
+    function getSortValue(r, f) {
+      if (f === '姓名' || f === '身份证号' || f === '相关企业' || f === '任职' || f === '参股') {
+        return (r.field_consensus && r.field_consensus[f] && r.field_consensus[f].value) || '';
+      }
+      if (f === '截图日期') return (r.capture_consensus && r.capture_consensus['截图日期'] && r.capture_consensus['截图日期'].value) || '';
+      if (f === '截图时间') return (r.capture_consensus && r.capture_consensus['截图时间'] && r.capture_consensus['截图时间'].value) || '';
+      if (f === '截图日期时间') return ensureUiCache(r).capDateTimeText;
+      if (f === 'file_no') return ensureUiCache(r).fileNo;
+      if (f === 'file_name_from_filename') return ensureUiCache(r).person;
+      if (f === 'issue_count') return r.issue_count;
+      if (f === 'time_max') return r.time_stats.max;
+      if (f === 'method_avg_confidence') return r.method_confidence ? r.method_confidence.avg : 0;
+      if (f === 'method_min_confidence') return r.method_confidence ? r.method_confidence.min : 0;
+      if (f === 'method_max_confidence') return r.method_confidence ? r.method_confidence.max : 0;
+      if (f === 'photo_count') return r.photo_count || 1;
+      if (f === 'employment_related') return employmentNumber(employmentReconcileForRecord(r), '相关企业数_明细');
+      return r[f];
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function scheduleRender(resetColumnFilters = true) {
+      window.clearTimeout(renderTimer);
+      renderTimer = window.setTimeout(() => render(resetColumnFilters), 160);
+    }
+
+    function render(resetColumnFilters = true) {
+      if (resetColumnFilters) {
+        columnFilterSignature = '';
+      }
+      const savedAggregateFilter = activeAggregateFilter;
+      activeAggregateFilter = 'all';
+      const aggregateBaseRows = getFilteredBaseRows();
+      activeAggregateFilter = savedAggregateFilter;
+      const baseRows = aggregateBaseRows.filter(rowMatchesAggregateFilter);
+      currentHeaderBaseRows = baseRows;
+      updateFilterSummary();
+      const active = baseRows.filter(rowMatchesColumnFilters);
+      const aggregateScopeRows = aggregateBaseRows.filter(rowMatchesColumnFilters);
+      const sf = sortField.value;
+      const asc = sortDirection.value === 'asc';
+      active.sort((a, b) => {
+        const ta = getSortValue(a, sf);
+        const tb = getSortValue(b, sf);
+        if (typeof ta === 'number' && typeof tb === 'number') {
+          return asc ? (ta - tb) : (tb - ta);
+        }
+        const na = String(ta || '');
+        const nb = String(tb || '');
+        return asc ? na.localeCompare(nb, 'zh-CN') : nb.localeCompare(na, 'zh-CN');
+      });
+
+      tb.innerHTML = '';
+      for (const r of active) {
+        const tr = document.createElement('tr');
+        const ui = ensureUiCache(r);
+        const name = ui.nameCell;
+        const idc = ui.idCell;
+        const idValue = ui.idValue;
+
+        const state = [];
+        if (getErrorForDisplay(r)) state.push('有报错');
+        if (getConflictCountForDisplay(r) > 0) state.push(`冲突${getConflictCountForDisplay(r)}项`);
+        if (getMissingCountForDisplay(r) > 0) state.push(`缺失${getMissingCountForDisplay(r)}项`);
+        if (employmentNeedsReview(r)) state.push('任职信息不一致');
+        if (r.__group_mode && r.duplicate_count > 0) {
+          state.push(`重复记录${r.duplicate_count}条`);
+        }
+
+        tr.innerHTML = `
+          <td class="nowrap"><a class="detail-link" href="${ui.detailHref}" target="_self">${escapeHtml(ui.fileTitle || '—')}</a></td>
+          <td class="nowrap">${escapeHtml(ui.fileNo || '—')}</td>
+          <td class="${statusClass(name.status)} nowrap">${escapeHtml(name.value || '—')}${statusSuffix(name.status)}</td>
+          <td class="${statusClass(idc.status)} nowrap">${escapeHtml(idValue || '—')}${statusSuffix(idc.status)}</td>
+          <td class="${statusClass(ui.capDateTimeStatus)} nowrap">${escapeHtml(ui.capDateTimeText || '—')}${statusSuffix(ui.capDateTimeStatus)}</td>
+          <td class="${ui.overviewClass}">
+            ${ui.overviewHtml}
+          </td>
+          <td class="nowrap">${ui.photoCountText}</td>
+          <td class="nowrap">${ui.methodAvgText}</td>
+          <td class="nowrap"><span class="badge">${r.issue_count}</span></td>
+          <td class="small ${getStatusClassForSummary(r)}">${rowIsReviewFailed(r) ? `复核不通过${state.length ? `：${state.join(' / ')}` : ''}` : (state.length ? `待复核：${state.join(' / ')}` : (rowIsReviewed(r) ? '正常（复核）' : '正常'))}</td>
+        `;
+        tb.appendChild(tr);
+      }
+
+      updateAggregateSummary(aggregateScopeRows, active);
+
+      try {
+        localStorage.setItem(LIST_STATE_KEY, JSON.stringify(active.map((r) => getRowId(r)).filter(Boolean)));
+      } catch (_) {}
+      updateHeaderStates();
+      saveFilterState();
+    }
+
+    document.getElementById('q').addEventListener('input', () => scheduleRender(true));
+    methodFilter.addEventListener('change', () => render(true));
+    sortField.addEventListener('change', () => render(false));
+    sortDirection.addEventListener('change', () => render(false));
+    function clearAggregateFilterForManualFilter() {
+      activeAggregateFilter = 'all';
+    }
+    filterMissing.addEventListener('change', () => { clearAggregateFilterForManualFilter(); render(true); });
+    filterConflict.addEventListener('change', () => { clearAggregateFilterForManualFilter(); render(true); });
+    filterError.addEventListener('change', () => { clearAggregateFilterForManualFilter(); render(true); });
+    filterEmployment.addEventListener('change', () => { clearAggregateFilterForManualFilter(); render(true); });
+    filterEmploymentMismatch.addEventListener('change', () => { clearAggregateFilterForManualFilter(); render(true); });
+    document.querySelectorAll('[data-aggregate-filter]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.aggregateFilter || 'all';
+        const nextKey = key === 'visible' ? 'all' : key;
+        activeAggregateFilter = activeAggregateFilter === nextKey ? 'all' : nextKey;
+        filterMissing.checked = false;
+        filterConflict.checked = false;
+        filterError.checked = false;
+        filterEmployment.checked = false;
+        filterEmploymentMismatch.checked = false;
+        render(true);
+      });
+    });
+    groupByPerson.addEventListener('change', () => render(true));
+    tb.addEventListener('click', (ev) => {
+      const link = ev.target && ev.target.closest ? ev.target.closest('a.detail-link') : null;
+      if (!link) return;
+      ev.preventDefault();
+      window.location.assign(link.getAttribute('href'));
+    });
+    resetBtn.addEventListener('click', () => {
+      qInput.value = '';
+      methodFilter.value = '';
+      filterMissing.checked = false;
+      filterConflict.checked = false;
+      filterError.checked = false;
+      filterEmployment.checked = false;
+      filterEmploymentMismatch.checked = false;
+      activeAggregateFilter = 'all';
+      groupByPerson.checked = true;
+      sortField.value = 'file_name';
+      sortDirection.value = 'asc';
+      initFilterMaps();
+      for (const def of COLUMN_FILTERS) {
+        if (activeColumnFilters[def.key]) {
+          activeColumnFilters[def.key].clear();
+        }
+      }
+      render(true);
+    });
+
+    for (const r of rows) {
+      r.search = (r.search || '').toLowerCase();
+    }
+    initFilterMaps();
+    applyFilterState();
+    initHeaderInteractions();
+    render(true);
+  </script>
+</body>
+</html>

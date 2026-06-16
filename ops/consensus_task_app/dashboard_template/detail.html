@@ -1,0 +1,2602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OCR 基础信息报告 - 详情</title>
+  <script>
+    (function () {
+      var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
+      document.documentElement.classList.toggle("is-windows", /Win/i.test(platform));
+    })();
+  </script>
+  <style>
+    @font-face {
+      font-family: "OCRSansSC";
+      src: url("assets/fonts/SourceHanSansSC-Regular.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --bg: #F8F6F0;
+      --bg-soft: #F3F0E8;
+      --paper: #FFFDF8;
+      --paper-strong: #FFFFFF;
+      --line: #E6E0D4;
+      --line-soft: #EEE8DC;
+      --text: #2F2A24;
+      --muted: #7B746A;
+      --soft: #A9A196;
+      --primary: #7F9D8C;
+      --primary-hover: #6F8E7E;
+      --primary-soft: #E7F0EA;
+      --ok: #4F7A5F;
+      --bad: #B46458;
+      --warn: #9A7A3F;
+      --success-bg: #E8F3EC;
+      --success-border: #CFE3D6;
+      --warning-bg: #F9F0D8;
+      --warning-border: #EEDCA8;
+      --danger-bg: #F8E7E3;
+      --danger-border: #EAC8C1;
+      --shadow: 0 12px 32px rgba(47, 42, 36, .055);
+      --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Hiragino Sans GB", sans-serif;
+      --font-windows-display: "OCRSansSC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      --font-windows-data: "Microsoft YaHei UI", "Microsoft YaHei", "OCRSansSC", "Noto Sans CJK SC", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html.is-windows body {
+      font-family: var(--font-windows-data);
+      text-rendering: optimizeLegibility;
+    }
+
+    html.is-windows h1,
+    html.is-windows .section-label,
+    html.is-windows .employment-title,
+    html.is-windows .employment-subtitle,
+    html.is-windows .status-main {
+      font-family: var(--font-windows-data);
+      letter-spacing: 0;
+    }
+
+    html.is-windows table,
+    html.is-windows input,
+    html.is-windows select,
+    html.is-windows button {
+      font-family: var(--font-windows-data);
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 7% 2%, rgba(221, 235, 226, .72), transparent 270px),
+        radial-gradient(circle at 96% 0%, rgba(216, 185, 154, .18), transparent 320px),
+        linear-gradient(180deg, rgba(255,253,248,.78), rgba(248,246,240,.98)),
+        var(--bg);
+      font-family: var(--font-ui);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.55;
+    }
+
+    .container {
+      width: min(1440px, calc(100vw - 36px));
+      margin: 0 auto;
+      padding: 22px 0 40px;
+    }
+
+    .detail-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .detail-head h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 560;
+      line-height: 1.25;
+      letter-spacing: -.2px;
+    }
+
+    .detail-subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .detail-nav,
+    .detail-actions,
+    .toolbar-actions,
+    .pager {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .detail-nav { justify-content: flex-end; }
+
+    .btn,
+    .nav-btn-mini,
+    button {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: #5F574E;
+      padding: 6px 11px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.35;
+      text-decoration: none;
+      transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+    }
+
+    .btn:hover,
+    .nav-btn-mini:hover,
+    button:hover {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--text);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .45;
+    }
+
+    #reviewBtn {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: #537264;
+      font-weight: 650;
+    }
+
+    #reviewBtn.reviewed {
+      border-color: var(--success-border);
+      background: var(--success-bg);
+      color: var(--ok);
+    }
+
+    #rejectReviewBtn.reviewed {
+      border-color: var(--danger-border);
+      background: var(--danger-bg);
+      color: var(--bad);
+      font-weight: 650;
+    }
+
+    .detail-actionbar {
+      position: sticky;
+      top: 8px;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding: 9px 11px;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: rgba(255,253,248,.86);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 22px rgba(47, 42, 36, .035);
+    }
+
+    .detail-context {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    #fileTitle {
+      max-width: min(520px, 44vw);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .small,
+    .muted,
+    .employment-muted,
+    .employment-source {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chip,
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--muted);
+      padding: 3px 8px;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: nowrap;
+    }
+
+    #reviewStatus {
+      border-color: var(--line);
+      background: var(--paper);
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    #reviewStatus.status-ok {
+      border-color: var(--success-border);
+      background: var(--success-bg);
+      color: var(--ok);
+    }
+
+    #reviewStatus.status-warn {
+      border-color: var(--warning-border);
+      background: var(--warning-bg);
+      color: var(--warn);
+    }
+
+    #reviewStatus.status-bad {
+      border-color: var(--danger-border);
+      background: var(--danger-bg);
+      color: var(--bad);
+    }
+
+    .card,
+    .debug-panel,
+    .employment-subcard {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,253,248,.88);
+      box-shadow: var(--shadow);
+    }
+
+    .review-workbench {
+      --detail-pane-height: clamp(560px, calc(56vh + 92px), 680px);
+      display: grid;
+      grid-template-columns: minmax(0, 1.04fr) minmax(360px, 520px);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .structured-review {
+      display: grid;
+      grid-template-rows: auto 68px 186px 78px minmax(0, 1fr);
+      gap: 10px;
+      height: var(--detail-pane-height);
+      min-width: 0;
+      min-height: 0;
+      padding: 14px;
+      overflow: hidden;
+    }
+
+    .evidence-head,
+    .employment-head,
+    .employment-subhead,
+    .image-title,
+    .method-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .evidence-head h2,
+    .image-title h2,
+    .card h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 620;
+      color: var(--text);
+    }
+
+    .section-label,
+    .employment-title,
+    .employment-subtitle {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 680;
+      letter-spacing: .02em;
+    }
+
+    .review-section {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 13px;
+      background: rgba(255,253,248,.70);
+      overflow: hidden;
+    }
+
+    .status-strip {
+      display: grid;
+      gap: 8px;
+      padding: 11px 12px;
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      background: rgba(255,253,248,.72);
+    }
+
+    .structured-review .status-strip {
+      height: 68px;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .status-strip.ok {
+      border-color: var(--success-border);
+      background: rgba(232,243,236,.62);
+    }
+
+    .status-strip.pending {
+      border-color: var(--warning-border);
+      background: rgba(249,240,216,.62);
+    }
+
+    .status-strip.failed {
+      border-color: var(--danger-border);
+      background: rgba(248,231,227,.64);
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .status-main {
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 680;
+    }
+
+    .status-strip.ok .status-main { color: var(--ok); }
+    .status-strip.pending .status-main { color: var(--warn); }
+    .status-strip.failed .status-main { color: var(--bad); }
+
+    .focus-reasons {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .focus-empty {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .focus-reason,
+    .focus-metric,
+    .employment-pill,
+    .field-state {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--warning-border);
+      border-radius: 999px;
+      background: var(--warning-bg);
+      color: var(--warning-text);
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 560;
+      line-height: 1.35;
+      white-space: nowrap;
+    }
+
+    .focus-reason.bad,
+    .employment-pill.bad,
+    .field-state.bad {
+      border-color: var(--danger-border);
+      background: var(--danger-bg);
+      color: var(--bad);
+    }
+
+    .focus-metric,
+    .employment-pill.ok,
+    .field-state.ok {
+      border-color: var(--success-border);
+      background: var(--success-bg);
+      color: var(--ok);
+    }
+
+    .focus-metric.warn,
+    .employment-pill.warn,
+    .field-state.warn {
+      border-color: var(--warning-border);
+      background: var(--warning-bg);
+      color: var(--warning-text);
+    }
+
+    .employment-pill.muted,
+    .field-state {
+      border-color: var(--line-soft);
+      background: #FFFCF5;
+      color: var(--muted);
+    }
+
+    .base-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-auto-rows: minmax(42px, auto);
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .focus-field,
+    .base-field {
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid var(--line-soft);
+      border-radius: 11px;
+      background: rgba(255,253,248,.88);
+    }
+
+    .focus-field .k,
+    .base-field .k {
+      margin-bottom: 4px;
+      color: var(--soft);
+      font-size: 11px;
+    }
+
+    .focus-field .v,
+    .base-field .v {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .enterprise-overview-line,
+    #enterpriseOverviewLine,
+    .focus-employment {
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .focus-employment-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .focus-metric {
+      width: 100%;
+      min-width: 0;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 9px;
+    }
+
+    .focus-metric .metric-name,
+    .focus-metric .metric-value {
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .focus-metric .metric-value {
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #enterpriseOverviewLine {
+      display: grid;
+      align-items: center;
+      height: 100%;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    #enterpriseOverviewLine .focus-empty {
+      display: flex;
+      align-items: center;
+      height: 100%;
+      min-height: 28px;
+    }
+
+    .employment-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      margin-top: 0;
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 13px;
+      background: rgba(255,253,248,.70);
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+
+    .employment-head,
+    .employment-subhead {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      border: 0;
+    }
+
+    .employment-count {
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      background: #FFFCF5;
+      color: var(--muted);
+      padding: 2px 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+
+    .employment-head-meta,
+    .employment-legend {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .employment-legend {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .legend-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--muted);
+      box-shadow: 0 0 0 2px rgba(255,253,248,.9);
+    }
+
+    .legend-dot.ok { background: var(--ok); }
+    .legend-dot.bad { background: var(--bad); }
+    .legend-dot.warn { background: var(--warn); }
+    .legend-dot.muted { background: var(--soft); }
+
+    .employment-subcard {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      min-height: 0;
+      overflow: hidden;
+      border-color: var(--line-soft);
+      border-radius: 12px;
+      box-shadow: none;
+      background: rgba(255,253,248,.82);
+    }
+
+    .employment-table-wrap {
+      max-height: none;
+      min-height: 0;
+      height: 100%;
+      overflow: auto;
+      border-top: 1px solid var(--line-soft);
+      background: #FFFCF5;
+    }
+
+    .employment-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+    }
+
+    .employment-table th,
+    .employment-table td {
+      padding: 7px 8px;
+      border-bottom: 1px solid var(--line-soft);
+      vertical-align: top;
+      text-align: left;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .employment-table th:nth-child(1),
+    .employment-table td:nth-child(1) { width: 34px; }
+    .employment-table th:nth-child(2),
+    .employment-table td:nth-child(2) { width: 30%; }
+    .employment-table th:nth-child(3),
+    .employment-table td:nth-child(3) { width: 13%; }
+    .employment-table th:nth-child(4),
+    .employment-table td:nth-child(4) { width: 29%; }
+    .employment-table th:nth-child(5),
+    .employment-table td:nth-child(5) { width: 9%; }
+    .employment-table th:nth-child(6),
+    .employment-table td:nth-child(6) { width: 86px; }
+
+    .employment-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #F3F0E8;
+      color: var(--muted);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .employment-table th:nth-child(1),
+    .employment-table td:nth-child(1) { width: 42px; }
+    .employment-table th:nth-child(2),
+    .employment-table td:nth-child(2) { width: 34%; }
+    .employment-table th:nth-child(3),
+    .employment-table td:nth-child(3) { width: 16%; }
+    .employment-table th:nth-child(4),
+    .employment-table td:nth-child(4) { width: 18%; }
+    .employment-table th:nth-child(5),
+    .employment-table td:nth-child(5) { width: 12%; }
+    .employment-table th:nth-child(6),
+    .employment-table td:nth-child(6) { width: 92px; }
+
+    .employment-table tbody tr:nth-child(even) {
+      background: rgba(248,246,240,.42);
+    }
+
+    .employment-table tbody tr:hover {
+      background: rgba(231,240,234,.52);
+    }
+
+    .employment-company,
+    .employment-placeholder {
+      display: block;
+      color: var(--text);
+      font-weight: 650;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .employment-placeholder { color: var(--warn); }
+
+    .employment-source {
+      display: block;
+      margin-top: 3px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11px;
+    }
+
+    .employment-table td:nth-child(4) {
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .employment-table td:nth-child(5) {
+      color: var(--text);
+      font-weight: 680;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .employment-status-stack {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .field-state {
+      min-width: 22px;
+      justify-content: center;
+      padding: 1px 5px;
+      font-size: 10px;
+      line-height: 17px;
+    }
+
+    .employment-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      height: 100%;
+      border: 1px dashed var(--line-soft);
+      border-radius: 12px;
+      background: rgba(255,252,245,.82);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .image-pane {
+      position: sticky;
+      top: 76px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      height: var(--detail-pane-height);
+      min-height: 0;
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .image-title {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .image-title h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 620;
+    }
+
+    .photo-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .photo-counter {
+      justify-self: end;
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      background: #FFFCF5;
+      color: var(--muted);
+      padding: 2px 8px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .image-hint { display: none; }
+
+    .img-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: auto;
+      min-height: 0;
+      overflow: hidden;
+      padding: 7px;
+      border-radius: 14px;
+      background: #F5F2EA;
+      box-shadow: inset 0 0 0 1px rgba(230,224,212,.58);
+      cursor: zoom-in;
+    }
+
+    .img-wrap img {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      border-radius: 12px;
+      object-fit: contain;
+    }
+
+    .img-wrap.expanded {
+      height: min(78vh, 760px);
+      min-height: 540px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      align-items: flex-start;
+      cursor: zoom-out;
+    }
+
+    .img-wrap.expanded img {
+      max-width: 100%;
+      max-height: none;
+    }
+
+    .photo-nav {
+      position: absolute;
+      top: 50%;
+      z-index: 4;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 46px;
+      transform: translateY(-50%);
+      border: 1px solid rgba(230,224,212,.82);
+      border-radius: 999px;
+      background: rgba(255,253,248,.88);
+      color: var(--text);
+      box-shadow: 0 8px 20px rgba(62,54,43,.10);
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .photo-nav.show { display: inline-flex; }
+    .photo-nav.prev { left: 12px; }
+    .photo-nav.next { right: 12px; }
+
+    #rawPath {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .debug-panel {
+      margin-top: 18px;
+      overflow: hidden;
+      box-shadow: none;
+      border-style: dashed;
+      background: rgba(255,253,248,.64);
+    }
+
+    .debug-panel .evidence-head h2 {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 620;
+    }
+
+    .debug-panel .cards {
+      grid-template-columns: repeat(4, minmax(260px, 1fr));
+      gap: 12px;
+      overflow-x: auto;
+    }
+
+    .debug-panel .card {
+      padding: 10px;
+      border-radius: 14px;
+      box-shadow: none;
+      background: rgba(255,253,248,.74);
+    }
+
+    .debug-panel .method-title {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .debug-panel pre,
+    .debug-panel .raw-text,
+    .debug-panel .ocr-raw {
+      max-height: 260px;
+      overflow: auto;
+    }
+
+    .debug-panel > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 12px 14px;
+      color: var(--muted);
+      background: transparent;
+      border-bottom: 0;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .debug-panel > summary::-webkit-details-marker { display: none; }
+    .debug-panel > summary::after { content: "展开"; float: right; color: var(--soft); }
+    .debug-panel[open] > summary::after { content: "收起"; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      padding: 12px;
+    }
+
+    .method-block .card,
+    #methodCards .card {
+      box-shadow: none;
+      border-color: var(--line-soft);
+      border-radius: 14px;
+      padding: 12px;
+      background: #FFFCF5;
+    }
+
+    .method-title {
+      margin-bottom: 8px;
+      display: grid;
+      grid-template-rows: 20px 34px;
+      gap: 5px;
+      min-height: 59px;
+      align-items: start;
+    }
+
+    .method-title .name {
+      color: var(--text);
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+
+    .method-exec-result {
+      display: grid;
+      grid-template-columns: 68px minmax(0, 1fr);
+      gap: 7px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .method-exec-result .k {
+      color: var(--soft);
+      white-space: nowrap;
+    }
+
+    .method-exec-result .v {
+      min-width: 0;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-height: 44px;
+      margin: 0;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--line-soft);
+      font-size: 13px;
+    }
+
+    .method-fields {
+      display: grid;
+      grid-template-rows: repeat(7, 44px);
+      margin-top: 8px;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    .field-row .k,
+    .kv .k {
+      color: var(--muted);
+    }
+
+    .field-row .v,
+    .kv .v {
+      min-width: 0;
+      color: var(--text);
+      font-weight: 560;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .field-row .small {
+      display: block;
+      margin-top: 2px;
+      overflow: hidden;
+      color: var(--soft);
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    pre,
+    .raw-lines {
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      background: #FFFCF5;
+      padding: 8px;
+      color: var(--text);
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+
+    .raw-lines { padding: 0; }
+    .raw-lines table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .raw-lines th,
+    .raw-lines td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
+    .raw-lines th { position: sticky; top: 0; background: #F3F0E8; color: var(--muted); }
+    .raw-lines .conf { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .method-employment {
+      margin-top: 8px;
+    }
+
+    .method-employment-title {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .method-employment-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 11px;
+    }
+
+    .method-employment-table th,
+    .method-employment-table td {
+      padding: 5px 6px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .method-employment-table th {
+      color: var(--muted);
+      background: #F3F0E8;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .method-employment-table th:nth-child(1),
+    .method-employment-table td:nth-child(1) { width: 24px; }
+    .method-employment-table th:nth-child(3),
+    .method-employment-table td:nth-child(3) { width: 46px; }
+    .method-employment-table th:nth-child(5),
+    .method-employment-table td:nth-child(5) { width: 38px; }
+
+    .method-employment-empty {
+      padding: 8px;
+      border: 1px dashed var(--line-soft);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255,252,245,.72);
+    }
+
+    .status-ok { color: var(--ok); font-weight: 650; }
+    .status-warn { color: var(--warn); font-weight: 650; }
+    .status-bad { color: var(--bad); font-weight: 650; }
+
+    #notFound { margin-top: 12px; }
+
+    @media (max-width: 1100px) {
+      .review-workbench { grid-template-columns: minmax(0, 1fr); }
+      .structured-review,
+      .image-pane { height: auto; min-height: 0; }
+      .image-pane { position: static; }
+      .img-wrap { height: clamp(320px, 52vh, 500px); }
+    }
+
+    @media (max-width: 760px) {
+      .container { width: min(100vw - 24px, 1440px); padding-top: 14px; }
+      .detail-head,
+      .detail-actionbar { grid-template-columns: 1fr; display: grid; align-items: start; }
+      .detail-nav,
+      .detail-actions { justify-content: flex-start; }
+      #fileTitle { max-width: 100%; }
+      .base-grid { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: 1fr; }
+      .employment-table { min-width: 760px; }
+      .detail-head h1 { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="detail-head">
+      <div>
+        <h1>OCR 基础信息结构化结果（详情）</h1>
+        <div class="detail-subtitle">查看原图、共识字段、四路 OCR 结果与任职明细。</div>
+      </div>
+      <div class="detail-nav">
+        <a class="btn nav-btn-mini" href="index.html">返回列表</a>
+        <a class="btn nav-btn-mini" href="/">返回处理台</a>
+      </div>
+    </div>
+
+    <div class="detail-actionbar">
+      <div class="detail-context">
+        <span class="small">当前文件</span>
+        <span id="fileTitle" class="badge">-</span>
+        <span class="chip" id="navHint">-</span>
+        <span id="reviewStatus"></span>
+      </div>
+      <div class="detail-actions">
+        <button class="btn nav-btn-mini" id="prevBtn" type="button">上一条</button>
+        <button class="btn nav-btn-mini" id="nextBtn" type="button">下一条</button>
+        <button class="btn" id="reviewBtn" type="button">复核通过</button>
+        <button class="btn" id="rejectReviewBtn" type="button">复核不通过</button>
+      </div>
+    </div>
+
+    <div id="notFound" class="chip" style="display:none;">未找到对应记录</div>
+
+    <div id="detailBody" style="display:none;">
+      <div class="review-workbench">
+        <div class="card structured-review">
+          <div class="evidence-head">
+            <h2>结构化审阅</h2>
+            <span class="small" id="reviewAnchor">基础信息 / 企业明细</span>
+          </div>
+          <div id="reviewStatusPanel" class="status-strip"></div>
+          <div class="review-section">
+            <div class="section-label">基础信息</div>
+            <div class="base-grid" id="consensus"></div>
+          </div>
+          <div class="review-section enterprise-section">
+            <div class="section-label">企业概览</div>
+            <div class="enterprise-overview-line" id="enterpriseOverviewLine"></div>
+          </div>
+          <div id="employmentBlock" class="employment-panel"></div>
+        </div>
+        <div class="card image-pane">
+          <div class="image-title">
+            <h2>图像预览</h2>
+            <span class="photo-name" id="photoName"></span>
+            <span class="photo-counter" id="photoCounter"></span>
+            <span class="image-hint" id="imageHint">点击图片放大</span>
+          </div>
+          <div class="img-wrap" id="previewWrap">
+            <button class="photo-nav prev" id="photoPrevBtn" type="button" aria-label="上一张">‹</button>
+            <img id="preview" alt="原图预览" src="" />
+            <button class="photo-nav next" id="photoNextBtn" type="button" aria-label="下一张">›</button>
+          </div>
+          <div class="small" id="rawPath" style="display:none;margin-top:8px"></div>
+        </div>
+      </div>
+
+      <details class="method-block debug-panel" open>
+        <summary>方法级证据（字段置信度 / 原始 OCR）</summary>
+        <div id="methodCards" class="cards"></div>
+      </details>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="employment_data.js"></script>
+  <script src="detail_records/groups.js"></script>
+  <script>
+    const DATA = window.OCR_REPORT;
+    const DETAIL_GROUPS = window.OCR_DETAIL_GROUPS || {};
+    const DETAIL_CACHE = {};
+    const GROUP_RECORD_CACHE = new Map();
+    const LIGHT_RECORD_CACHE = new Map();
+    const IMAGE_CANDIDATE_CACHE = new Map();
+    const IMAGE_SUCCESS_CACHE = new Map();
+    const qs = new URLSearchParams(window.location.search);
+    const LIST_STATE_KEY = 'ocr_list_last_view_rows_v1';
+    const REVIEW_KEY = 'ocr_manual_review_v1';
+    const rawFileParam = qs.get('file') || qs.get('filename') || qs.get('name') || '';
+    const rawIdxParam = qs.get('idx');
+    const rawGroupParam = qs.get('group');
+    const rawRowIdParam = qs.get('rowId') || '';
+    const rawPhotoParam = qs.get('photo') || '';
+    const toText = (x) => (x || '').toString().normalize('NFKC').trim();
+
+    const EMPLOYMENT = window.OCR_EMPLOYMENT || {};
+    const EMP_RECONCILE = new Map((EMPLOYMENT.reconcile_rows || []).map((r) => [toText(r['人员键']), r]));
+    const EMP_PERSON_ROWS = EMPLOYMENT.person_rows || [];
+    const EMP_CANDIDATE_ROWS = EMPLOYMENT.candidate_rows || [];
+    const EMP_ROWS_BY_KEY = new Map();
+    for (const row of EMP_PERSON_ROWS) {
+      const key = toText(row['人员键']);
+      if (!EMP_ROWS_BY_KEY.has(key)) EMP_ROWS_BY_KEY.set(key, []);
+      EMP_ROWS_BY_KEY.get(key).push(row);
+    }
+
+    function employmentPersonKey(rec) {
+      const no = resolveFileNo(rec);
+      const person = resolvePerson(rec);
+      if (no && person) return `${no}-${person}`;
+      return person || no || '';
+    }
+
+    function employmentRowsForRecord(rec) {
+      return EMP_ROWS_BY_KEY.get(employmentPersonKey(rec)) || [];
+    }
+
+    function employmentReconcileForRecord(rec) {
+      return EMP_RECONCILE.get(employmentPersonKey(rec)) || null;
+    }
+
+    function employmentNumber(row, key) {
+      const n = Number(row && row[key]);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function detailEmploymentNeedsReview(rec) {
+      const summary = employmentReconcileForRecord(rec);
+      if (!summary) return employmentRowsForRecord(rec).length > 0;
+      return !(summary['相关企业数_一致'] === '是' && summary['任职企业数_一致'] === '是' && summary['参股企业数_一致'] === '是');
+    }
+
+    function detailReviewReasons(rec) {
+      const reasons = [];
+      if (Number(rec && rec.conflict_count || 0) > 0) reasons.push(`冲突${Number(rec.conflict_count || 0)}项`);
+      if (Number(rec && rec.missing_count || 0) > 0) reasons.push(`缺失${Number(rec.missing_count || 0)}项`);
+      if (rec && rec.has_error) reasons.push('方法报错');
+      if (detailEmploymentNeedsReview(rec)) reasons.push('任职信息不一致');
+      return reasons;
+    }
+
+    function detailNeedsReview(rec) {
+      return detailReviewReasons(rec).length > 0;
+    }
+
+    function detailFieldValue(consensus, key) {
+      const cell = consensus && consensus[key];
+      if (!cell) return '';
+      if (typeof cell === 'object') return toText(cell.value || cell.text || cell.raw || '');
+      return toText(cell);
+    }
+
+    function renderFocusField(label, value, status) {
+      const cls = status === 'missing' ? 'status-bad' : status === 'conflict' ? 'status-warn' : '';
+      return `
+        <div class="base-field">
+          <div class="k">${escapeHtml(label)}</div>
+          <div class="v ${cls}" title="${escapeHtml(value || '—')}">${escapeHtml(value || '—')}</div>
+        </div>
+      `;
+    }
+
+    function detailCellStatus(consensus, key) {
+      const cell = consensus && consensus[key];
+      return cell && typeof cell === 'object' ? toText(cell.status) : '';
+    }
+
+    function renderFocusMetric(label, summary, detailKey, baseKey, okKey) {
+      const detail = employmentNumber(summary, detailKey);
+      const base = employmentNumber(summary, baseKey);
+      const ok = summary ? summary[okKey] === '是' : true;
+      return `
+        <span class="focus-metric ${ok ? '' : 'warn'}" title="${escapeHtml(label)}明细/基础：${detail}/${base}">
+          <span class="metric-name">${escapeHtml(label)}</span>
+          <span class="metric-value">${detail}/${base}</span>
+        </span>
+      `;
+    }
+
+    function renderFocusEmployment(rec) {
+      const rows = employmentRowsForRecord(rec);
+      const summary = employmentReconcileForRecord(rec);
+      if (!rows.length && !summary) {
+        return '<div class="focus-empty">无任职企业明细</div>';
+      }
+      if (!summary) {
+        return `<div class="focus-employment"><div class="focus-reasons"><span class="focus-reason">有明细，缺少数量对账</span></div></div>`;
+      }
+      return `
+        <div class="focus-employment">
+          <div class="focus-employment-row">
+            ${renderFocusMetric('企', summary, '相关企业数_明细', '相关企业数_基础', '相关企业数_一致')}
+            ${renderFocusMetric('任', summary, '任职企业数_明细', '任职企业数_基础', '任职企业数_一致')}
+            ${renderFocusMetric('参', summary, '参股企业数_明细', '参股企业数_基础', '参股企业数_一致')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderStatusPanel(rec) {
+      if (!reviewStatusPanel || !rec) return;
+      const reviewed = isReviewed(rec);
+      const failed = isReviewFailed(rec);
+      const reasons = detailReviewReasons(rec);
+      const pending = !reviewed && reasons.length > 0;
+      const status = reviewed ? '正常（复核）' : failed ? '复核不通过' : pending ? '待复核' : '正常';
+      const reasonHtml = reasons.length
+        ? reasons.map((x) => `<span class="focus-reason ${x.includes('报错') || x.includes('缺失') ? 'bad' : ''}">${escapeHtml(x)}</span>`).join('')
+        : '<span class="focus-empty">当前记录未发现待复核问题。</span>';
+      reviewStatusPanel.className = `status-strip ${failed ? 'failed' : pending ? 'pending' : 'ok'}`;
+      reviewStatusPanel.innerHTML = `
+        <div class="status-line">
+          <span class="status-main">${escapeHtml(status)}</span>
+          ${reviewed ? '<span class="focus-reason">人工复核通过</span>' : failed ? '<span class="focus-reason bad">人工复核不通过</span>' : ''}
+        </div>
+        <div class="focus-reasons">${reasonHtml}</div>
+      `;
+    }
+
+    function renderEnterpriseOverview(rec) {
+      if (!enterpriseOverviewLine || !rec) return;
+      enterpriseOverviewLine.innerHTML = renderFocusEmployment(rec);
+    }
+
+    function renderReviewFocus(rec) {
+      if (!rec) return;
+      const field = rec.field_consensus || {};
+      const capture = rec.capture_consensus || {};
+      const name = detailFieldValue(field, '姓名');
+      const idRaw = detailFieldValue(field, '身份证号');
+      const idValue = typeof normalizeIdValue === 'function' ? normalizeIdValue(idRaw) || idRaw : idRaw;
+      const date = detailFieldValue(capture, '截图日期');
+      const time = detailFieldValue(capture, '截图时间');
+      renderStatusPanel(rec);
+      renderEnterpriseOverview(rec);
+    }
+
+    const ID_PREFIX3_ALLOWED = /^(11[0-9]|12[0-9]|13[0-9]|14[0-9]|15[0-9]|21[0-9]|22[0-9]|23[0-9]|31[0-9]|32[0-9]|33[0-9]|34[0-9]|35[0-9]|36[0-9]|37[0-9]|41[0-9]|42[0-9]|43[0-9]|44[0-9]|45[0-9]|46[0-9]|50[0-9]|51[0-9]|52[0-9]|53[0-9]|54[0-9]|61[0-9]|62[0-9]|63[0-9]|64[0-9]|65[0-9]|71[0-9]|81[0-9]|82[0-9])$/;
+
+    function isValidPrefix3(prefix3) {
+      return ID_PREFIX3_ALLOWED.test(prefix3);
+    }
+
+    function normalizeMaskedTail(tailRaw) {
+      const tail = toText(tailRaw).toUpperCase().replace(/[^0-9X]/g, '');
+      if (!tail || tail.length < 4) return '';
+      const v = tail.slice(-4);
+      if (!/^[0-9X]{4}$/.test(v)) return '';
+      if (v.includes('X') && v[3] !== 'X') {
+        const withoutX = v.replace(/X/g, '');
+        if (withoutX.length === 3) return `${withoutX}X`;
+      }
+      return v;
+    }
+
+    function scoreIdCandidate(prefix3, raw) {
+      let score = isValidPrefix3(prefix3) ? 120 : 30;
+      if (/^\d{3}\*{8}[0-9X]{4}$/.test(raw)) score += 90;
+      if (raw.length === 15) score += 20;
+      return score;
+    }
+
+    function extractIdCandidates(s) {
+      const norm = toText(s).toUpperCase().replace(/[：:；;，,。.，]/g, ' ');
+      const cands = new Set();
+      const tokens = norm.split(/[\s]+/).filter(Boolean);
+      for (const token of tokens) {
+        const compact = token.replace(/[^0-9X*]/g, '');
+        if (!compact) continue;
+        if (compact.length <= 15) {
+          cands.add(compact);
+          continue;
+        }
+        for (const n of [15, 17, 18]) {
+          if (compact.length < n) continue;
+          for (let i = 0; i + n <= compact.length; i += 1) {
+            cands.add(compact.slice(i, i + n));
+          }
+        }
+      }
+      return Array.from(cands);
+    }
+
+    function normalizeIdValue(v) {
+      const s = toText(v);
+      if (!s) return '';
+
+      const candidates = extractIdCandidates(s);
+      if (!candidates.length) return '';
+
+      let best = '';
+      let bestScore = -1;
+
+      for (const raw of candidates) {
+        const compact = toText(raw).toUpperCase().replace(/[^0-9X*]/g, '');
+        if (!compact) continue;
+
+        const variants = new Set([compact]);
+        for (const n of [15, 17, 18]) {
+          if (compact.length < n) continue;
+          for (let i = 0; i + n <= compact.length; i += 1) {
+            variants.add(compact.slice(i, i + n));
+          }
+        }
+
+        for (const variant of variants) {
+          if (variant.length < 15) continue;
+          const prefix3 = variant.slice(0, 3);
+          if (!/^\d{3}$/.test(prefix3)) continue;
+          const tail = normalizeMaskedTail(variant.slice(-4));
+          if (!tail) continue;
+          const normalized = `${prefix3}********${tail}`;
+          const score = scoreIdCandidate(prefix3, variant);
+          if (score > bestScore) {
+            bestScore = score;
+            best = normalized;
+          }
+        }
+      }
+
+      if (!best) {
+        const digitsOrX = s.toUpperCase().replace(/[^0-9X]/g, '');
+        const fallbackPrefix = digitsOrX.slice(0, 3);
+        const fallbackTail = normalizeMaskedTail(digitsOrX.slice(-4));
+        if (/^\d{3}$/.test(fallbackPrefix) && fallbackTail) {
+          best = `${fallbackPrefix}********${fallbackTail}`;
+        }
+      }
+
+      return best || '';
+    }
+
+    const fileNameCandidates = [toText(decodeURIComponent(rawFileParam || '').trim())];
+    if (!rawFileParam) {
+      const selected = toText(qs.get('p') || qs.get('q') || qs.get('search'));
+      if (selected) fileNameCandidates.push(selected);
+    }
+
+    const PERSON_NOISE = new Set([
+      '无经商办企业',
+      '无经商办企',
+      '有经商办企业',
+      '经商办企业',
+      '新增经商办企业',
+      '无新增经商办企业',
+      '无新增办企业',
+      '无新增',
+      '经商办企截图',
+      '经商办企',
+      '投资任职信息查询',
+      '投资任职情况查询',
+      '投资任职情况',
+      '投资任职信息',
+      '龙信图片',
+      '图片',
+      '截图',
+      '自查',
+      '龙信',
+      '注销',
+      '已注销',
+      '未注销',
+      '吊销',
+      '存续',
+      '开业',
+      '在业',
+      '迁出',
+      '撤销',
+      '停业',
+      '相关企业',
+      '任职',
+      '参股',
+      '查询结论',
+      '未查询到',
+      '本查询结果',
+    ]);
+
+    function isValidPersonName(value) {
+      const name = toText(value);
+      if (!/^[\u4e00-\u9fff]{2,4}$/.test(name)) return false;
+      if (PERSON_NOISE.has(name)) return false;
+      for (const token of PERSON_NOISE) {
+        if (token.length >= 2 && name.includes(token)) return false;
+      }
+      return true;
+    }
+
+    function cleanPersonCandidate(value) {
+      let raw = toText(value);
+      if (!raw) return '';
+      const tokens = Array.from(PERSON_NOISE).sort((a, b) => b.length - a.length);
+      for (const token of tokens) raw = raw.split(token).join(' ');
+      raw = raw.replace(/^\d{6,20}/, '');
+      const chunks = raw.match(/[\u4e00-\u9fff]{2,8}/g) || [];
+      for (let i = chunks.length - 1; i >= 0; i -= 1) {
+        if (isValidPersonName(chunks[i])) return chunks[i];
+      }
+      return '';
+    }
+
+    function extractFileName(name) {
+      return toText(name).split(/[\\/]/).pop();
+    }
+
+    function extractFileBase(name) {
+      return extractFileName(name).replace(/\.[^.]+$/, '');
+    }
+
+    function parseFileNoFromName(name) {
+      const base = extractFileBase(name);
+      const m = base.match(/^(\d{6,20})(?=\D|$)/);
+      return m ? m[1] : '';
+    }
+
+    function parsePersonFromName(name) {
+      const stem = extractFileBase(name);
+      const tokens = stem.split(/[-_+\s]+/).map((x) => toText(x)).filter(Boolean);
+      const candidates = [];
+      for (const token of tokens) {
+        if (!token || PERSON_NOISE.has(token)) continue;
+        const direct = cleanPersonCandidate(token);
+        if (direct) candidates.push(direct);
+        const pref = token.match(/^\d+([\u4e00-\u9fff]{2,8})$/);
+        if (pref) {
+          const prefName = cleanPersonCandidate(pref[1]);
+          if (prefName) candidates.push(prefName);
+        }
+      }
+      if (!candidates.length) {
+        const found = cleanPersonCandidate(stem);
+        if (found) candidates.push(found);
+      }
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const c = candidates[i];
+        if (isValidPersonName(c) && c.length >= 2 && c.length <= 4) return c;
+      }
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const c = candidates[i];
+        if (isValidPersonName(c) && c.length >= 2 && c.length <= 8) return c;
+      }
+      return '';
+    }
+
+    function resolvePerson(r) {
+      return toText(r.file_name_from_filename || parsePersonFromName(r.file_name || r.filename || ''));
+    }
+
+    function resolveFileNo(r) {
+      return toText(r.file_no || parseFileNoFromName(r.file_name || r.filename || ''));
+    }
+
+    function resolveRecordImageName(r) {
+      return extractFileName(r.filename || r.file_name || r.file_name_from_filename || '');
+    }
+
+    function personGroupKey(r) {
+      const fileNo = resolveFileNo(r);
+      const person = resolvePerson(r);
+      if (!fileNo || !person) return '';
+      return `${fileNo}|||${person}`;
+    }
+
+    function getRowId(rec) {
+      if (rec && rec.__group_mode && rec.group_key) return `g:${rec.group_key}`;
+      return `r:${rec && Number.isInteger(rec.idx) ? rec.idx : ''}`;
+    }
+
+    function loadReviewMap() {
+      try {
+        const raw = localStorage.getItem(REVIEW_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch (_) {}
+      return {};
+    }
+
+    function isReviewed(rec) {
+      return reviewState(rec) === 'passed';
+    }
+
+    function reviewEntry(rec) {
+      return loadReviewMap()[getRowId(rec)];
+    }
+
+    function reviewState(rec) {
+      const entry = reviewEntry(rec);
+      if (!entry) return '';
+      if (entry === true) return 'passed';
+      if (typeof entry === 'object') {
+        if (entry.status === 'failed') return 'failed';
+        if (entry.status === 'passed') return 'passed';
+        return 'passed';
+      }
+      return '';
+    }
+
+    function isReviewFailed(rec) {
+      return reviewState(rec) === 'failed';
+    }
+
+    function setReviewed(rec, checked) {
+      setReviewState(rec, checked ? 'passed' : '');
+    }
+
+    function setReviewState(rec, status) {
+      const map = loadReviewMap();
+      const rowId = getRowId(rec);
+      if (!rowId) return;
+      if (status) {
+        map[rowId] = {
+          status,
+          at: Date.now(),
+          file: toText(resolveRecordImageName(rec)),
+        };
+      } else {
+        delete map[rowId];
+      }
+      localStorage.setItem(REVIEW_KEY, JSON.stringify(map));
+    }
+
+    function getListStateRecords() {
+      try {
+        const raw = localStorage.getItem(LIST_STATE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((x) => typeof x === 'string' && x);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function detailScriptId(rowId) {
+      if (!rowId) return '';
+      const s = String(rowId);
+      if (s.startsWith('r:')) return `r_${s.slice(2)}`;
+      if (s.startsWith('g:')) return '';
+      return s.replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`加载失败: ${src}`));
+        document.head.appendChild(script);
+      });
+    }
+
+    function hasMethodEvidence(rec) {
+      const methods = (rec && rec.methods) || {};
+      return Object.values(methods).some((m) => {
+        if (!m || typeof m !== 'object') return false;
+        return !!toText(m['原始OCR']) || (Array.isArray(m.ocr_lines) && m.ocr_lines.length > 0);
+      });
+    }
+
+    function hasFullDetailEvidence(rec) {
+      if (!rec) return false;
+      if (rec.__group_mode) {
+        const rows = rec.group_rows || [];
+        return rows.length > 0 && rows.every(hasMethodEvidence);
+      }
+      return hasMethodEvidence(rec);
+    }
+
+    async function loadDetailRecordByRowId(rowId) {
+      const id = detailScriptId(rowId);
+      if (!id) return null;
+      if (DETAIL_CACHE[id]) return DETAIL_CACHE[id];
+      window.OCR_DETAIL_RECORD = null;
+      await loadScript(`detail_records/${encodeURIComponent(id)}.js`);
+      const rec = window.OCR_DETAIL_RECORD;
+      if (rec) DETAIL_CACHE[id] = rec;
+      return rec || null;
+    }
+
+    async function buildRecordByRowIdAsync(rowId) {
+      if (!rowId) return null;
+      if (LIGHT_RECORD_CACHE.has(rowId) && hasFullDetailEvidence(LIGHT_RECORD_CACHE.get(rowId))) return LIGHT_RECORD_CACHE.get(rowId);
+      if (String(rowId).startsWith('g:')) {
+        const key = decodeURIComponent(String(rowId).slice(2));
+        if (GROUP_RECORD_CACHE.has(key) && hasFullDetailEvidence(GROUP_RECORD_CACHE.get(key))) return GROUP_RECORD_CACHE.get(key);
+        const ids = DETAIL_GROUPS[key] || [];
+        const members = [];
+        for (const id of ids) {
+          const hit = await loadDetailRecordByRowId(`r:${String(id).replace(/^r_/, '')}`);
+          if (hit) members.push(hit);
+        }
+        if (!members.length) return null;
+        const grouped = buildGroupRecord(members, key);
+        GROUP_RECORD_CACHE.set(key, grouped);
+        LIGHT_RECORD_CACHE.set(rowId, grouped);
+        return grouped;
+      }
+      const hit = await loadDetailRecordByRowId(rowId);
+      if (hit) LIGHT_RECORD_CACHE.set(rowId, hit);
+      return hit || null;
+    }
+
+    function buildRecordByRowId(rowId) {
+      if (!rowId) return null;
+      if (LIGHT_RECORD_CACHE.has(rowId)) return LIGHT_RECORD_CACHE.get(rowId);
+      if (String(rowId).startsWith('g:')) {
+        const key = decodeURIComponent(rowId.slice(2));
+        if (GROUP_RECORD_CACHE.has(key)) return GROUP_RECORD_CACHE.get(key);
+        const memberIds = DETAIL_GROUPS[key] || [];
+        const members = (DATA.rows || []).filter((r) => memberIds.includes(`r_${r.idx}`) || personGroupKey(r) === key);
+        if (!members.length) return null;
+        const grouped = buildGroupRecord(members, key);
+        GROUP_RECORD_CACHE.set(key, grouped);
+        LIGHT_RECORD_CACHE.set(rowId, grouped);
+        return grouped;
+      }
+      if (String(rowId).startsWith('r:')) {
+        const idx = parseInt(rowId.slice(2), 10);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < (DATA.rows || []).length) {
+          const row = DATA.rows[idx];
+          const key = personGroupKey(row);
+          const members = key ? (DATA.rows || []).filter((r) => personGroupKey(r) === key) : [];
+          if (members.length > 1) {
+            const groupRowId = buildGroupRowId(key);
+            if (GROUP_RECORD_CACHE.has(key)) return GROUP_RECORD_CACHE.get(key);
+            const grouped = buildGroupRecord(members, key);
+            GROUP_RECORD_CACHE.set(key, grouped);
+            LIGHT_RECORD_CACHE.set(groupRowId, grouped);
+            return grouped;
+          }
+          LIGHT_RECORD_CACHE.set(rowId, row);
+          return row;
+        }
+      }
+      return null;
+    }
+
+    function resolveCurrentRowId(rec) {
+      return getRowId(rec);
+    }
+
+    function getRecordFromListState() {
+      for (const rowId of listState) {
+        const hit = buildRecordByRowId(rowId);
+        if (hit) return { rec: hit, id: rowId };
+      }
+      return null;
+    }
+
+    function getCurrentRecordFromList() {
+      return getRecordFromListState();
+    }
+
+    function normalizeStatus(c) {
+      if (!c || typeof c !== 'object') return 'missing';
+      return c.status || 'missing';
+    }
+
+    function normalizeValue(c) {
+      if (!c || typeof c !== 'object') return '—';
+      return c.value || '—';
+    }
+
+    function displayDateValue(value) {
+      const v = toText(value);
+      const compact = v.replace(/[-/]/g, '');
+      if (/^\d{4}$/.test(compact)) return `${compact.slice(0, 2)}-${compact.slice(2)}`;
+      return v;
+    }
+
+    function statusClass(c) {
+      if (c === 'missing') return 'status-bad';
+      if (c === 'conflict') return 'status-warn';
+      return 'status-ok';
+    }
+
+    const GROUP_COUNT_FIELDS = new Set(['相关企业', '任职', '参股']);
+
+    function selectCaptureValue(keys, score, field) {
+      const sorted = keys.slice().sort((a, b) => {
+        const d = (score[b] || 0) - (score[a] || 0);
+        if (d !== 0) return d;
+        if (field === '截图日期') {
+          const an = a.replace(/[-/]/g, '');
+          const bn = b.replace(/[-/]/g, '');
+          if (/^\d{4}$/.test(an) && /^\d{4}$/.test(bn)) return bn.localeCompare(an);
+        }
+        return b.localeCompare(a);
+      });
+      return sorted[0] || '';
+    }
+
+    function collectConsensus(rows, field, source) {
+      const score = {};
+      for (const r of rows) {
+        const src = source === 'capture' ? (r.capture_consensus || {}) : (r.field_consensus || {});
+        const cell = src[field];
+        let val = toText(cell && cell.value);
+        if (field === '身份证号') {
+          val = normalizeIdValue(val);
+        }
+        if (!val) continue;
+        score[val] = (score[val] || 0) + 1;
+      }
+      const keys = Object.keys(score);
+      if (!keys.length) return { value: '', status: 'missing', unique_count: 0 };
+      if (GROUP_COUNT_FIELDS.has(field)) {
+        const positiveNums = keys
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        if (positiveNums.length) {
+          const uniqPositive = Array.from(new Set(positiveNums)).sort((a, b) => b - a);
+          return {
+            value: String(uniqPositive[0]),
+            status: uniqPositive.length === 1 ? 'agree' : 'conflict',
+            unique_count: uniqPositive.length,
+            raw_unique_count: keys.length,
+          };
+        }
+      }
+      if (source === 'capture') {
+        return {
+          value: selectCaptureValue(keys, score, field),
+          status: 'agree',
+          unique_count: 1,
+          raw_unique_count: keys.length,
+        };
+      }
+      keys.sort((a, b) => {
+        const d = score[b] - score[a];
+        if (d !== 0) return d;
+        return b.localeCompare(a);
+      });
+      return {
+        value: keys[0],
+        status: keys.length === 1 ? 'agree' : 'conflict',
+        unique_count: keys.length,
+      };
+    }
+
+    function buildGroupRecord(rows, rawKey) {
+      const first = rows[0] || {};
+      const resolvedFileNo = resolveFileNo(first);
+      const resolvedPerson = resolvePerson(first);
+      const field_consensus = {};
+      const capture_consensus = {};
+      let missing_count = 0;
+      let conflict_count = 0;
+      let has_error = false;
+      let issue_count = 0;
+      let timeMax = 0;
+      let searchText = [];
+      for (const f of ['姓名', '身份证号', '相关企业', '任职', '参股']) {
+        const c = collectConsensus(rows, f, 'field');
+        field_consensus[f] = c;
+        if (c.status === 'missing') missing_count += 1;
+        if (c.status === 'conflict') conflict_count += 1;
+      }
+      for (const f of ['截图日期', '截图时间']) {
+        const c = collectConsensus(rows, f, 'capture');
+        capture_consensus[f] = c;
+        if (c.status === 'missing') missing_count += 1;
+        if (c.status === 'conflict') conflict_count += 1;
+      }
+      const mergedRows = rows.slice();
+      const duplicateCount = 0;
+
+      for (const r of mergedRows) {
+        has_error = has_error || !!r.has_error;
+        issue_count += Number(r.issue_count || 0);
+        if (r.time_stats && r.time_stats.max > timeMax) timeMax = r.time_stats.max;
+        searchText.push(r.file_name || '');
+        searchText.push(r.file_no || '');
+        searchText.push(r.file_name_from_filename || '');
+      }
+      return {
+        __group_mode: true,
+        group_key: rawKey || personGroupKey(first),
+        filename: rows.map(r => r.file_name || '').join('|'),
+        file_name: rows.map(r => r.file_name || '').join('|'),
+        file_no: resolvedFileNo,
+        file_name_from_filename: resolvedPerson,
+        photo_count: mergedRows.length,
+        duplicate_count: duplicateCount,
+        field_consensus,
+        capture_consensus,
+        time_stats: { min: 0, max: timeMax, avg: 0 },
+        issues: first.issues || [],
+        issue_count,
+        has_error,
+        missing_count,
+        conflict_count,
+        methods: {},
+        search: searchText.join(' ').toLowerCase(),
+        group_rows: mergedRows,
+      };
+    }
+
+    function findRecordFromQuery() {
+      if (rawRowIdParam) {
+        const fromId = buildRecordByRowId(decodeURIComponent(rawRowIdParam));
+        if (fromId) return fromId;
+      }
+      if (rawGroupParam) {
+        const target = toText(decodeURIComponent(rawGroupParam));
+        const members = (DATA.rows || []).filter(r => personGroupKey(r) === target);
+        if (members.length) {
+          return buildGroupRecord(members, target);
+        }
+      }
+      if (rawIdxParam) {
+        const idx = parseInt(String(rawIdxParam), 10);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < (DATA.rows || []).length) {
+          const row = DATA.rows[idx];
+          const key = personGroupKey(row);
+          const members = key ? (DATA.rows || []).filter((r) => personGroupKey(r) === key) : [];
+          if (members.length > 1) return buildGroupRecord(members, key);
+          return row;
+        }
+      }
+      for (const target of fileNameCandidates.filter(Boolean)) {
+        const direct = DATA.rows.find(r => resolveRecordImageName(r) === target || r.file_name === target || r.filename === target || personGroupKey(r) === target);
+        if (direct) return direct;
+        const bn = target.split('/').pop();
+        const inPath = DATA.rows.find(r => resolveRecordImageName(r) === bn);
+        if (inPath) return inPath;
+        const basenameEqual = DATA.rows.find(r =>
+          toText(resolveRecordImageName(r)).includes(bn) ||
+          toText(r.file_name_from_filename).includes(target)
+        );
+        if (basenameEqual) return basenameEqual;
+      }
+      return null;
+    }
+
+    const listState = getListStateRecords();
+    const initialRowId = rawRowIdParam ? decodeURIComponent(rawRowIdParam) : '';
+    let currentRowId = initialRowId;
+    let record = findRecordFromQuery();
+    if (!record && listState.length) {
+      const fallback = getCurrentRecordFromList();
+      if (fallback && fallback.rec) {
+        record = fallback.rec;
+        if (!currentRowId) currentRowId = fallback.id;
+      }
+    }
+
+    const notFound = document.getElementById('notFound');
+    const detailBody = document.getElementById('detailBody');
+    const fileTitle = document.getElementById('fileTitle');
+    const consensusWrap = document.getElementById('consensus');
+    const reviewStatusPanel = document.getElementById('reviewStatusPanel');
+    const enterpriseOverviewLine = document.getElementById('enterpriseOverviewLine');
+    const methodCards = document.getElementById('methodCards');
+    const employmentBlock = document.getElementById('employmentBlock');
+    const preview = document.getElementById('preview');
+    const rawPathEl = document.getElementById('rawPath');
+    const reviewStatus = document.getElementById('reviewStatus');
+    const reviewBtn = document.getElementById('reviewBtn');
+    const rejectReviewBtn = document.getElementById('rejectReviewBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const navHint = document.getElementById('navHint');
+    const previewWrap = document.getElementById('previewWrap');
+    const imageHint = document.getElementById('imageHint');
+    const photoPrevBtn = document.getElementById('photoPrevBtn');
+    const photoNextBtn = document.getElementById('photoNextBtn');
+    const photoCounter = document.getElementById('photoCounter');
+    const photoName = document.getElementById('photoName');
+    const dataImageBase = toText(DATA?.meta?.image_dir);
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function recordImageName(rec) {
+      return encodeURIComponent(resolveRecordImageName(rec)).replaceAll('%2F', '/');
+    }
+
+    function resolveImageBase(baseRaw) {
+      const clean = toText(baseRaw)
+        .replace(/^file:\/\//i, '')
+        .replace(/\\/g, '/')
+        .replace(/\/+$/, '');
+
+      if (!clean) return '';
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(clean)) return '';
+
+      // In file:// mode, avoid absolute file-system paths, which are blocked by browser isolation rules.
+      if (window.location.protocol === 'file:' && clean.startsWith('/')) return '';
+      return clean;
+    }
+
+    function buildImageCandidates(rec) {
+      const cacheKey = `${getRowId(rec)}::${resolveRecordImageName(rec)}`;
+      if (IMAGE_CANDIDATE_CACHE.has(cacheKey)) return IMAGE_CANDIDATE_CACHE.get(cacheKey).slice();
+      const fileName = recordImageName(rec);
+      if (!fileName) return [];
+      const decodedFileName = toText(decodeURIComponent(fileName));
+
+      const metaBase = resolveImageBase(dataImageBase);
+      const pageDir = window.location.pathname.replace(/[^/]*$/, '');
+
+      const bases = [];
+      if (metaBase) bases.push(metaBase);
+      if (window.location.protocol.startsWith('http') && pageDir) {
+        const httpBase = pageDir.replace(/\/+$/, '');
+        if (httpBase) bases.push(`${httpBase}images`);
+      }
+      bases.push('images');
+      bases.push('./images');
+      bases.push('.');
+      bases.push('');
+
+      const uniq = new Set();
+      const out = [];
+      const pushCandidate = (b) => {
+        const clean = toText(b).replace(/\/+$/, '');
+        if (!clean) return;
+        const cands = [
+          `${clean}/${fileName}`,
+          `${clean}/${decodedFileName}`,
+        ];
+        for (const c of cands) {
+          if (!c || uniq.has(c)) continue;
+          uniq.add(c);
+          out.push(c);
+        }
+      };
+
+      if (!bases.length) return out;
+      for (const b of bases) {
+        const clean = toText(b).replace(/\/+$/, '');
+        if (!clean) {
+          pushCandidate('.');
+        } else {
+          pushCandidate(clean);
+        }
+      }
+      IMAGE_CANDIDATE_CACHE.set(cacheKey, out.slice());
+      return out;
+    }
+
+    function setImageUnavailable(msg, rec) {
+      preview.removeAttribute('src');
+      preview.dataset.loaded = '0';
+      const suffix = rec && rec.__group_mode ? `（当前文件: ${recordImageName(rec)}）` : '';
+      rawPathEl.style.display = '';
+      rawPathEl.textContent = `${msg || '未配置预览路径。请确认详情页同级或上层目录可直接访问图片文件。'} ${suffix}`.trim();
+    }
+
+    function refreshImage(rec, options = {}) {
+      const keepExpanded = !!options.keepExpanded;
+      const wasExpanded = !!(previewWrap && previewWrap.classList.contains('expanded'));
+      if (previewWrap && !(keepExpanded && wasExpanded)) previewWrap.classList.remove('expanded');
+      if (imageHint) imageHint.textContent = previewWrap && previewWrap.classList.contains('expanded') ? '点击图片还原' : '点击图片放大';
+      const cacheKey = `${getRowId(rec)}::${resolveRecordImageName(rec)}`;
+      let candidates = buildImageCandidates(rec);
+      const successSrc = IMAGE_SUCCESS_CACHE.get(cacheKey);
+      if (successSrc) candidates = [successSrc, ...candidates.filter((src) => src !== successSrc)];
+      if (!candidates.length) {
+        setImageUnavailable('未能找到可用图片路径。请确认图片位置。', rec);
+        return;
+      }
+
+      let idx = 0;
+      preview.onload = null;
+      preview.onerror = null;
+
+      const tryLoad = () => {
+        if (idx >= candidates.length) {
+          setImageUnavailable(`图片加载失败：${candidates[candidates.length - 1] || '无可用路径'}。`, rec);
+          return;
+        }
+        const src = candidates[idx++];
+        rawPathEl.style.display = 'none';
+        rawPathEl.textContent = '';
+        preview.onload = () => {
+          rawPathEl.style.display = 'none';
+          rawPathEl.textContent = '';
+          IMAGE_SUCCESS_CACHE.set(cacheKey, src);
+        };
+        preview.onerror = tryLoad;
+        preview.src = src;
+      };
+
+      tryLoad();
+    }
+
+    if (previewWrap) {
+      previewWrap.addEventListener('click', () => {
+        const expanded = previewWrap.classList.toggle('expanded');
+        if (imageHint) imageHint.textContent = expanded ? '点击图片还原' : '点击图片放大';
+      });
+    }
+
+    function buildConsensus(rec) {
+      const fieldConsensus = rec.field_consensus || {};
+      const captureConsensus = rec.capture_consensus || {};
+      const missing = { value: '', status: 'missing' };
+      let html = '';
+      const nameCell = fieldConsensus['姓名'] || missing;
+      const idCell = fieldConsensus['身份证号'] || missing;
+      const dateCell = captureConsensus['截图日期'] || missing;
+      const timeCell = captureConsensus['截图时间'] || missing;
+      const conclusionCell = fieldConsensus['查询结论'] || missing;
+      const idValue = normalizeIdValue(idCell.value) || idCell.value || '—';
+      const dateValue = displayDateValue(dateCell.value) || dateCell.value || '';
+      const timeValue = timeCell.value || '';
+      html += renderFocusField('姓名', normalizeValue(nameCell), normalizeStatus(nameCell));
+      html += renderFocusField('身份证号', idValue, normalizeStatus(idCell));
+      html += renderFocusField('截图时间', [dateValue, timeValue].filter(Boolean).join(' '), '');
+      html += renderFocusField('文件编号', resolveFileNo(rec) || '—', '');
+      html += renderFocusField('文件姓名', resolvePerson(rec) || '—', '');
+      html += renderFocusField('查询结论', normalizeValue(conclusionCell), normalizeStatus(conclusionCell));
+      if (rec.roi_id_fallback && rec.roi_id_fallback.value) {
+        html += renderFocusField('身份证补救', `ROI 二次识别 · ${rec.roi_id_fallback.value} · 支持 ${Number(rec.roi_id_fallback.support_count || 0)} 条`, '');
+      }
+      consensusWrap.innerHTML = html;
+    }
+
+    function renderEmployment(rec) {
+      const rows = employmentRowsForRecord(rec);
+      const summary = employmentReconcileForRecord(rec);
+      if (!rows.length && !summary) {
+        employmentBlock.innerHTML = '<div class="employment-head"><span class="employment-title">企业明细</span></div><div class="employment-empty">无任职企业明细</div>';
+        return;
+      }
+      const ok = summary && summary['相关企业数_一致'] === '是' && summary['任职企业数_一致'] === '是' && summary['参股企业数_一致'] === '是';
+      const statusClassName = (status) => {
+        const s = toText(status);
+        if (s === '一致') return 'ok';
+        if (s === '冲突') return 'bad';
+        if (s === '占位' || s === '证据补齐') return 'warn';
+        return 'muted';
+      };
+      const statusPill = (label, status) => {
+        const s = toText(status) || '缺失';
+        const shortLabel = { 企业: '企', 状态: '态', 职务: '职', 持股: '股' }[label] || label;
+        return `<span class="field-state ${statusClassName(s)}" title="${escapeHtml(label)}：${escapeHtml(s)}">${escapeHtml(shortLabel)}</span>`;
+      };
+      const fieldHtml = (row, field, valueClass = '') => {
+        const value = toText(row[field]) || '—';
+        return `<span class="${valueClass}">${escapeHtml(value)}</span>`;
+      };
+      const body = rows.length ? `
+        <div class="employment-subcard">
+          <div class="employment-table-wrap">
+            <table class="employment-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>企业</th>
+                  <th>经营状态</th>
+                  <th>职务</th>
+                  <th>持股</th>
+                  <th>核验</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((row) => {
+                  const isPlaceholder = toText(row['企业名称']).startsWith('未识别企业_');
+                  return `
+                    <tr class="${isPlaceholder ? 'placeholder-row' : ''}">
+                      <td class="employment-muted">${escapeHtml(row['企业序号'] || '')}</td>
+                      <td>
+                        ${fieldHtml(row, '企业名称', isPlaceholder ? 'employment-placeholder' : 'employment-company')}
+                        <span class="employment-source">来源：${escapeHtml(row['来源文件'] || '—')}</span>
+                      </td>
+                      <td>${fieldHtml(row, '经营状态')}</td>
+                      <td>${fieldHtml(row, '承担职务')}</td>
+                      <td>${fieldHtml(row, '持股比例')}</td>
+                      <td>
+                        <span class="employment-status-stack">
+                          ${statusPill('企业', row['企业名称状态'])}
+                          ${statusPill('状态', row['经营状态状态'])}
+                          ${statusPill('职务', row['承担职务状态'])}
+                          ${statusPill('持股', row['持股比例状态'])}
+                        </span>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ` : '<div class="employment-empty">基础信息有数量，但未抽取到企业明细</div>';
+      employmentBlock.innerHTML = `
+        <div class="employment-head">
+          <span class="employment-title">企业明细</span>
+          <span class="employment-head-meta">
+            <span class="employment-legend">
+              <span class="legend-dot ok"></span>一致
+              <span class="legend-dot warn"></span>补齐/占位
+              <span class="legend-dot bad"></span>冲突
+              <span class="legend-dot muted"></span>缺失
+            </span>
+            <span class="employment-count">${rows.length ? `${rows.length} 条` : '无明细'}</span>
+          </span>
+        </div>
+        ${body}
+      `;
+    }
+
+    function showPercent(v) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      return `${(n * 100).toFixed(2)}%`;
+    }
+
+    function fieldScoreText(scores, field) {
+      const item = scores && scores[field];
+      if (!item || typeof item !== 'object') return '';
+      const v = Number(item.confidence);
+      if (!Number.isFinite(v)) return '';
+      const rule = item.rule_processed ? ' · 规则加工' : '';
+      const source = item.confidence_source ? ` · ${item.confidence_source}` : '';
+      return `<span class="small">置信 ${showPercent(v)}${rule}${source}</span>`;
+    }
+
+    function rawOcrBlock(data) {
+      const lines = Array.isArray(data && data.ocr_lines) ? data.ocr_lines : [];
+      if (!lines.length) {
+        return `<pre>${escapeHtml(data && data.原始OCR || '—')}</pre>`;
+      }
+      return `
+        <div class="raw-lines">
+          <table>
+            <thead><tr><th>#</th><th>文本</th><th>置信度</th></tr></thead>
+            <tbody>
+              ${lines.map((line, idx) => {
+                const n = Number(line && line.confidence);
+                const conf = Number.isFinite(n) ? showPercent(n) : '—';
+                return `<tr><td class="conf">${Number(line && line.index || idx + 1)}</td><td>${escapeHtml(line && line.text || '')}</td><td class="conf">${conf}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function methodEmploymentRowsForRecord(rec, method) {
+      const file = resolveRecordImageName(rec);
+      const fileNo = resolveFileNo(rec);
+      const person = resolvePerson(rec);
+      return EMP_CANDIDATE_ROWS
+        .filter((row) => {
+          if (toText(row['方案']) !== method) return false;
+          const rowFile = toText(row['文件名']);
+          if (file && rowFile === file) return true;
+          return fileNo && person && toText(row['文件编号']) === fileNo && toText(row['姓名']) === person;
+        })
+        .sort((a, b) => Number(a['候选序号'] || 0) - Number(b['候选序号'] || 0));
+    }
+
+    function renderMethodEmployment(method, rec) {
+      const rows = methodEmploymentRowsForRecord(rec, method);
+      if (!rows.length) {
+        return `
+          <div class="method-employment">
+            <span class="method-employment-title">任职页企业候选</span>
+            <div class="method-employment-empty">未识别到企业候选</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="method-employment">
+          <span class="method-employment-title">任职页企业候选</span>
+          <table class="method-employment-table">
+            <thead><tr><th>#</th><th>企业</th><th>状态</th><th>职务</th><th>持股</th></tr></thead>
+            <tbody>
+              ${rows.map((row) => `
+                <tr>
+                  <td>${escapeHtml(row['候选序号'] || '')}</td>
+                  <td>${escapeHtml(row['企业名称'] || '—')}</td>
+                  <td>${escapeHtml(row['经营状态'] || '—')}</td>
+                  <td>${escapeHtml(row['承担职务'] || '—')}</td>
+                  <td>${escapeHtml(row['持股比例'] || '—')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function buildMethodCard(method, data, rec) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const hasError = !!(data && data.error);
+      const errorText = hasError ? `<span class="status-bad">报错: ${escapeHtml(data.error)}</span>` : '<span class="status-ok">无报错</span>';
+      const methodScore = (data && data.method_score) || {};
+      const scoreText = `avg:${showPercent(methodScore.avg_confidence)} | min:${showPercent(methodScore.min_confidence)} | max:${showPercent(methodScore.max_confidence)}`;
+      const fieldScores = (data && data.field_scores) || {};
+      const fieldRow = (label, value, field, cls = '') => `
+        <div class="field-row">
+          <span class="k">${escapeHtml(label)}</span>
+          <span class="v ${cls}" title="${escapeHtml(value || '—')}">${escapeHtml(value || '—')}${fieldScoreText(fieldScores, field)}</span>
+        </div>
+      `;
+      card.innerHTML = `
+        <div class="method-title">
+          <span class="name">${method}</span>
+          <span class="method-exec-result">
+            <span class="k">模型执行结果</span>
+            <span class="v">耗时 ${(data.time_ms || 0).toFixed(2)}ms · 行数 ${Math.round(data.line_count || 0)} · conf ${scoreText} · ${errorText}</span>
+          </span>
+        </div>
+        <div class="method-fields">
+          ${fieldRow('姓名', data.姓名 || '—', '姓名', statusClass(data.姓名 ? 'ok' : 'missing'))}
+          ${fieldRow('身份证号', normalizeIdValue(data.身份证号 || '') || '—', '身份证号', statusClass(data.身份证号 ? 'ok' : 'missing'))}
+          ${fieldRow('截图日期', displayDateValue(data.截图日期) || '—', '截图日期')}
+          ${fieldRow('截图时间', data.截图时间 || '—', '截图时间')}
+          ${fieldRow('相关企业', data.相关企业 || '—', '相关企业')}
+          ${fieldRow('任职', data.任职 || '—', '任职')}
+          ${fieldRow('参股', data.参股 || '—', '参股')}
+        </div>
+        ${renderMethodEmployment(method, rec)}
+        <div style="margin-top:8px;"><span class="small">任职情况信息</span><pre>${escapeHtml(data.任职情况信息 || '—')}</pre></div>
+        <div style="margin-top:8px;"><span class="small">原始OCR</span>${rawOcrBlock(data)}</div>
+      `;
+      return card;
+    }
+
+    function renderMethodCards(rec) {
+      methodCards.innerHTML = '';
+      for (const method of DATA.methods) {
+        const data = rec.methods[method] || {};
+        methodCards.appendChild(buildMethodCard(method, data, rec));
+      }
+      if (rec.issues && rec.issues.length) {
+        const issueDiv = document.createElement('div');
+        issueDiv.className = 'chip';
+        issueDiv.textContent = `字段问题: ${rec.issues.join(' ; ')}`;
+        issueDiv.style.marginTop = '10px';
+        methodCards.appendChild(issueDiv);
+      }
+    }
+
+    let NAV_CACHE = null;
+
+    function navSequence() {
+      if (NAV_CACHE) return NAV_CACHE;
+      const ids = (listState && listState.length)
+        ? listState
+        : DATA.rows.map((r) => {
+            const key = personGroupKey(r);
+            const groupIds = key ? (DETAIL_GROUPS[key] || []) : [];
+            return groupIds.length > 1 ? buildGroupRowId(key) : getRowId(r);
+          });
+      const seen = new Set();
+      const out = [];
+      for (const rowId of ids) {
+        if (!rowId) continue;
+        const rec = buildRecordByRowId(rowId);
+        if (!rec) continue;
+        const effectiveRowId = rec.__group_mode ? getRowId(rec) : rowId;
+        if (!effectiveRowId || seen.has(effectiveRowId)) continue;
+        seen.add(effectiveRowId);
+        out.push({ rowId: effectiveRowId, rec });
+      }
+      NAV_CACHE = out;
+      return out;
+    }
+
+    function syncReviewUI(rec) {
+      const reviewed = isReviewed(rec);
+      const failed = isReviewFailed(rec);
+      const reasons = detailReviewReasons(rec);
+      const needsReview = reasons.length > 0;
+      const statusText = reviewed ? '正常（复核）' : failed ? '复核不通过' : (needsReview ? `待复核：${reasons.join(' / ')}` : '正常');
+      if (reviewStatusPanel) {
+        reviewStatusPanel.dataset.reviewState = failed ? 'failed' : reviewed ? 'passed' : needsReview ? 'pending' : 'normal';
+      }
+      if (reviewStatus) {
+        reviewStatus.textContent = statusText;
+        reviewStatus.className = failed ? 'status-bad' : (reviewed || !needsReview ? 'status-ok' : 'status-warn');
+      }
+      if (reviewBtn) {
+        reviewBtn.textContent = reviewed ? '取消通过' : '复核通过';
+        reviewBtn.classList.toggle('reviewed', reviewed);
+      }
+      if (rejectReviewBtn) {
+        rejectReviewBtn.textContent = failed ? '取消不通过' : '复核不通过';
+        rejectReviewBtn.classList.toggle('reviewed', failed);
+      }
+    }
+
+    function renderNav(rec) {
+      const seq = navSequence();
+      if (!seq.length) {
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        navHint.textContent = '当前无可导航项';
+        return;
+      }
+      const idx = seq.findIndex((x) => x.rowId === currentRowId);
+      const useIdx = idx >= 0 ? idx : 0;
+      const current = seq[useIdx];
+      if (current) {
+        currentRowId = current.rowId;
+      }
+      prevBtn.disabled = useIdx <= 0;
+      nextBtn.disabled = useIdx < 0 || useIdx >= seq.length - 1;
+      navHint.textContent = `当前 ${Math.max(1, useIdx + 1)} / ${seq.length}`;
+    }
+
+    function setLoadingState(message) {
+      detailBody.style.display = 'block';
+      methodCards.innerHTML = `<div class="chip">${escapeHtml(message || '正在加载详情...')}</div>`;
+      rawPathEl.textContent = '';
+      prevBtn.disabled = true;
+      nextBtn.disabled = true;
+    }
+
+    function buildGroupRowId(key) {
+      return key ? `g:${key}` : '';
+    }
+
+    async function loadFullRecord(rowId, fallbackRec) {
+      if (!rowId && fallbackRec) rowId = resolveCurrentRowId(fallbackRec);
+      if (!rowId) return fallbackRec || null;
+
+      if (String(rowId).startsWith('g:')) {
+        return (await buildRecordByRowIdAsync(rowId)) || fallbackRec || null;
+      }
+
+      const lightRec = fallbackRec || buildRecordByRowId(rowId);
+      const key = lightRec ? personGroupKey(lightRec) : '';
+      const groupIds = key ? (DETAIL_GROUPS[key] || []) : [];
+      if (groupIds.length > 1) {
+        return (await buildRecordByRowIdAsync(buildGroupRowId(key))) || lightRec || null;
+      }
+
+      return (await buildRecordByRowIdAsync(rowId)) || lightRec || null;
+    }
+
+    function updateUrlForRecord(rowId, rec, selectedRec) {
+      const next = new URL(window.location.href);
+      if (rowId) next.searchParams.set('rowId', rowId);
+      if (rec && rec.__group_mode) {
+        next.searchParams.delete('idx');
+        next.searchParams.set('group', rec.group_key || '');
+        const img = selectedRec ? resolveRecordImageName(selectedRec) : '';
+        if (img) next.searchParams.set('photo', img);
+      } else if (rec && Number.isInteger(rec.idx)) {
+        next.searchParams.delete('group');
+        next.searchParams.delete('photo');
+        next.searchParams.set('idx', String(rec.idx));
+        const img = resolveRecordImageName(rec);
+        if (img) next.searchParams.set('file', img);
+      }
+      window.history.replaceState({}, '', next);
+    }
+
+    function renderRecord(rec) {
+      record = rec;
+      currentRowId = currentRowId || resolveCurrentRowId(record) || '';
+      const fileNoText = resolveFileNo(record) || '—';
+      const fileNameFromFilename = resolvePerson(record) || '—';
+      fileTitle.textContent = `${fileNoText} ${fileNameFromFilename}`;
+      notFound.style.display = 'none';
+      detailBody.style.display = 'block';
+      if (photoPrevBtn) photoPrevBtn.classList.remove('show');
+      if (photoNextBtn) photoNextBtn.classList.remove('show');
+      if (photoCounter) photoCounter.textContent = '';
+      if (photoName) photoName.textContent = '';
+
+      buildConsensus(record);
+      renderEmployment(record);
+
+      let selectedRec = record;
+      if (record.__group_mode) {
+        const rows = record.group_rows || [];
+        const queryPhoto = toText(new URLSearchParams(window.location.search).get('photo') || rawPhotoParam);
+        const prefer = rows.find(r => toText(resolveRecordImageName(r)) === queryPhoto);
+        let selectedIndex = Math.max(0, rows.findIndex(r => r === prefer));
+        if (selectedIndex < 0) selectedIndex = 0;
+
+        const selectPhotoAt = (nextIndex) => {
+          if (!rows.length) return;
+          selectedIndex = Math.max(0, Math.min(rows.length - 1, nextIndex));
+          selectedRec = rows[selectedIndex] || rows[0];
+          if (!selectedRec) return;
+          if (photoCounter) photoCounter.textContent = `${selectedIndex + 1} / ${rows.length}`;
+          if (photoName) photoName.textContent = resolveRecordImageName(selectedRec);
+          if (photoPrevBtn) photoPrevBtn.classList.toggle('show', rows.length > 1);
+          if (photoNextBtn) photoNextBtn.classList.toggle('show', rows.length > 1);
+          fileTitle.textContent = `${fileNoText} ${fileNameFromFilename}`;
+          renderMethodCards(selectedRec);
+          refreshImage(selectedRec, { keepExpanded: true });
+          updateUrlForRecord(currentRowId, record, selectedRec);
+        };
+
+        selectPhotoAt(selectedIndex);
+
+        if (photoPrevBtn) {
+          photoPrevBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            selectPhotoAt((selectedIndex - 1 + rows.length) % rows.length);
+          };
+        }
+        if (photoNextBtn) {
+          photoNextBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            selectPhotoAt((selectedIndex + 1) % rows.length);
+          };
+        }
+      }
+
+      prevBtn.onclick = () => moveInNav(-1);
+      nextBtn.onclick = () => moveInNav(1);
+
+      const reviewTarget = record.__group_mode ? record : (selectedRec || record);
+      renderMethodCards(selectedRec || record);
+      if (selectedRec) {
+        fileTitle.textContent = `${fileNoText} ${fileNameFromFilename}`;
+        if (photoName) photoName.textContent = resolveRecordImageName(selectedRec);
+      }
+
+      syncReviewUI(reviewTarget);
+      renderReviewFocus(reviewTarget);
+      renderReviewButton(reviewTarget);
+      renderNav(reviewTarget);
+      updateUrlForRecord(currentRowId, record, selectedRec || record);
+      refreshImage(selectedRec || record);
+    }
+
+    async function openRow(rowId, fallbackRec) {
+      currentRowId = rowId || currentRowId;
+      setLoadingState('正在加载详情...');
+      try {
+        const full = await loadFullRecord(currentRowId, fallbackRec);
+        if (!full) throw new Error('未找到记录');
+        if (full.__group_mode) {
+          currentRowId = buildGroupRowId(full.group_key);
+        } else {
+          currentRowId = resolveCurrentRowId(full);
+        }
+        renderRecord(full);
+      } catch (err) {
+        detailBody.style.display = 'none';
+        notFound.style.display = 'inline-flex';
+        notFound.textContent = `详情加载失败：${err && err.message ? err.message : err}`;
+      }
+    }
+
+    function moveInNav(delta) {
+      const seq = navSequence();
+      if (!seq.length) return;
+      const idx = seq.findIndex((x) => x.rowId === currentRowId);
+      const base = idx >= 0 ? idx : 0;
+      const target = base + delta;
+      if (target < 0 || target >= seq.length) return;
+
+      const item = seq[target];
+      openRow(item.rowId, item.rec);
+    }
+
+    function renderReviewButton(rec) {
+      if (!reviewBtn) return;
+      reviewBtn.onclick = () => {
+        setReviewState(rec, isReviewed(rec) ? '' : 'passed');
+        syncReviewUI(rec);
+        renderStatusPanel(rec);
+      };
+      if (rejectReviewBtn) {
+        rejectReviewBtn.onclick = () => {
+          setReviewState(rec, isReviewFailed(rec) ? '' : 'failed');
+          syncReviewUI(rec);
+          renderStatusPanel(rec);
+        };
+      };
+    }
+
+    async function initDetailPage() {
+      if (!record && listState.length) {
+        const fallback = getCurrentRecordFromList();
+        if (fallback && fallback.rec) {
+          record = fallback.rec;
+          if (!currentRowId) currentRowId = fallback.id;
+        }
+      }
+      if (!record) {
+        notFound.style.display = 'inline-flex';
+        notFound.textContent = `未找到记录：${rawFileParam || rawIdxParam || '-'}`;
+        return;
+      }
+      currentRowId = currentRowId || resolveCurrentRowId(record) || '';
+      await openRow(currentRowId, record);
+    }
+
+    initDetailPage();
+  </script>
+</body>
+</html>

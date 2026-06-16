@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>经商办企OCR解析系统</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#58a6ff;--accent2:#3fb950;--accent3:#f0883e;--red:#f85149;--surface:#21262d}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;min-height:100vh}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+h1{font-size:1.8em;margin-bottom:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:var(--text2);margin-bottom:24px;font-size:0.95em}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0}
+.tab{padding:10px 20px;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;transition:all 0.2s;font-size:0.95em}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px}
+.card-title{font-size:1.1em;font-weight:600;margin-bottom:12px;color:var(--accent)}
+
+/* Stats */
+.stats{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px 20px;flex:1;min-width:140px;text-align:center}
+.stat .num{font-size:1.8em;font-weight:700;color:var(--accent)}
+.stat .label{color:var(--text2);font-size:0.85em;margin-top:4px}
+
+/* Buttons */
+.btn{padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.9em;transition:all 0.2s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:#4493e6}
+.btn-danger{border-color:var(--red);color:var(--red)}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Upload Zone */
+.upload-zone{border:2px dashed var(--border);border-radius:8px;padding:40px 20px;text-align:center;cursor:pointer;transition:all 0.3s}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--accent);background:rgba(88,166,255,0.05)}
+.upload-zone .icon{font-size:2.5em;margin-bottom:8px}
+.upload-zone p{color:var(--text2);font-size:0.9em}
+
+/* Table */
+.table-wrap{overflow-x:auto;max-height:60vh;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:0.85em}
+th{position:sticky;top:0;background:var(--surface);color:var(--accent);text-align:left;padding:10px 12px;border-bottom:2px solid var(--border);white-space:nowrap;z-index:1}
+td{padding:8px 12px;border-bottom:1px solid var(--border);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:hover td{background:rgba(88,166,255,0.05)}
+
+/* Tag */
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8em;font-weight:500}
+.tag-green{background:rgba(63,185,80,0.15);color:var(--accent2)}
+.tag-yellow{background:rgba(240,136,62,0.15);color:var(--accent3)}
+.tag-red{background:rgba(248,81,73,0.15);color:var(--red)}
+.tag-blue{background:rgba(88,166,255,0.15);color:var(--accent)}
+
+/* Scene fields */
+.field-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px}
+.field-card .fname{font-weight:600;color:var(--accent);margin-bottom:4px}
+.field-card .fval{color:var(--text);font-size:0.9em;word-break:break-all}
+
+/* Tab content */
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* Toast */
+.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:6px;font-size:0.9em;z-index:999;animation:fadeIn 0.3s}
+.toast-success{background:var(--accent2);color:#fff}
+.toast-error{background:var(--red);color:#fff}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+/* Progress */
+.progress-bar{width:100%;height:6px;background:var(--surface);border-radius:3px;overflow:hidden;margin:8px 0}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width 0.5s;border-radius:3px}
+
+/* Loading */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Drawer & Split-view Styles */
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.drawer.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.drawer-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+.drawer-content {
+  position: relative;
+  width: 75%;
+  max-width: 1100px;
+  height: 100%;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.drawer.open .drawer-content {
+  transform: translateX(0);
+}
+.drawer-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+}
+#drawer-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--accent);
+}
+.drawer-close {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: 1.8em;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.2s;
+}
+.drawer-close:hover {
+  color: var(--red);
+}
+.drawer-body {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+.split-view {
+  display: flex;
+  gap: 20px;
+  height: 100%;
+  min-height: 450px;
+}
+.split-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.pane-title {
+  padding: 10px 16px;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text2);
+  font-size: 0.9em;
+}
+.image-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #090d13;
+  overflow: auto;
+  position: relative;
+  min-height: 350px;
+}
+.image-container img {
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  transition: transform 0.2s;
+}
+.image-container img:hover {
+  cursor: zoom-in;
+}
+.text-container {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.8em;
+}
+
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🔍 OCR通用识别系统</h1>
+  <p class="subtitle">上传图片/ZIP → OCR识别 → 场景解析 → 结构化表格 → Excel导出</p>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('ocr')">🔍 通用OCR</div>
+    <div class="tab" onclick="switchTab('upload')">📤 上传OCR结果</div>
+    <div class="tab" onclick="switchTab('results')">📊 解析结果</div>
+    <div class="tab" onclick="switchTab('tasks')">📋 跑批任务</div>
+  </div>
+
+  <!-- Tab: 通用OCR -->
+  <div id="tab-ocr" class="tab-content active">
+    <div class="card">
+      <div class="card-title">📸 上传图片或ZIP进行OCR识别</div>
+      <div id="gen-drop-zone" class="upload-zone">
+        <div class="icon">📷</div>
+        <p>拖拽图片(JPG/PNG)或ZIP文件到此处，或点击选择<br><small>支持单张图片或包含多张图片的ZIP压缩包，最大200MB</small></p>
+        <input type="file" id="gen-file-input" accept=".jpg,.jpeg,.png,.bmp,.webp,.zip" style="display:none">
+      </div>
+      <div id="gen-file-info" class="hidden" style="margin-top:12px"></div>
+      <div style="margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <label style="color:var(--text2);font-size:0.9em">场景：</label>
+        <select id="gen-scene" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 12px"></select>
+        <label style="color:var(--text2);font-size:0.9em"><input type="checkbox" id="gen-enhance"> 增强识别</label>
+      </div>
+      <div id="gen-progress" class="hidden" style="margin-top:12px">
+        <div class="progress-bar"><div id="gen-progress-fill" class="progress-fill" style="width:0%"></div></div>
+        <p id="gen-status" style="color:var(--text2);font-size:0.85em;margin-top:4px"></p>
+      </div>
+      <div style="margin-top:16px">
+        <button id="gen-start-btn" class="btn btn-primary" disabled onclick="startGenOcr()">🚀 开始识别</button>
+      </div>
+    </div>
+    <div id="gen-results" class="hidden" style="margin-top:16px">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="card-title" style="margin:0">识别结果 (<span id="gen-count">0</span>条)</div>
+          <button class="btn btn-primary" onclick="exportGenResults()">📥 下载Excel</button>
+        </div>
+        <div class="table-wrap">
+          <table id="gen-table"><thead><tr id="gen-header"></tr></thead><tbody id="gen-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Upload OCR Results -->
+  <div id="tab-upload" class="tab-content">
+    <div class="card">
+      <div class="card-title">上传OCR结果JSON文件</div>
+      <div id="ocr-drop-zone" class="upload-zone">
+        <div class="icon">📄</div>
+        <p>拖拽JSON文件到此处，或点击选择<br><small>支持标准 OCR 结果 JSON 格式</small></p>
+        <input type="file" id="ocr-file-input" accept=".json" style="display:none">
+      </div>
+      <div id="ocr-file-info" class="hidden" style="margin-top:12px"></div>
+      <div id="ocr-progress" class="hidden" style="margin-top:12px">
+        <div class="progress-bar"><div id="ocr-progress-fill" class="progress-fill" style="width:0%"></div></div>
+        <p id="ocr-status" style="color:var(--text2);font-size:0.85em;margin-top:4px"></p>
+      </div>
+      <div style="margin-top:16px">
+        <button id="ocr-upload-btn" class="btn btn-primary" disabled onclick="uploadOcrResults()">🚀 开始解析</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Results -->
+  <div id="tab-results" class="tab-content">
+    <div class="stats" id="result-stats"></div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="card-title" style="margin:0">解析结果 (<span id="result-count">0</span>条)</div>
+        <button class="btn btn-primary" onclick="exportResults()">📥 下载Excel</button>
+      </div>
+      <div class="table-wrap">
+        <table id="result-table">
+          <thead><tr id="result-header"></tr></thead>
+          <tbody id="result-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Tasks -->
+  <div id="tab-tasks" class="tab-content">
+    <div class="card">
+      <div class="card-title">跑批任务</div>
+      <div id="task-list" style="color:var(--text2);font-size:0.9em">暂无任务</div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Drawer -->
+<div id="detail-drawer" class="drawer">
+  <div class="drawer-overlay" onclick="closeDrawer()"></div>
+  <div class="drawer-content">
+    <div class="drawer-header">
+      <h3 id="drawer-title">🔍 OCR 详细对比</h3>
+      <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="split-view">
+        <div class="split-pane pane-image">
+          <div class="pane-title">🖼️ 原始图片</div>
+          <div class="image-container">
+            <img id="drawer-img" src="" alt="原始图片" style="max-width:100%; max-height:100%;">
+          </div>
+        </div>
+        <div class="split-pane pane-text">
+          <div class="pane-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>📝 提取文本 / 解析字段</span>
+            <button class="btn btn-sm btn-primary" onclick="copyDrawerText()">📋 复制文本</button>
+          </div>
+          <div class="text-container">
+            <div id="drawer-fields" class="hidden"></div>
+            <div id="drawer-raw-text"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let ocrFile = null;
+let uploadedResults = [];
+
+// ===== Tab Switching =====
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const tabs = ['ocr','upload','results','tasks'];
+    t.classList.toggle('active', tabs[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ===== 通用OCR Upload =====
+let genFile = null;
+let genResults = [];
+
+// Load scenes into dropdown
+fetch('/api/scenes').then(r=>r.json()).then(d=>{
+  const sel = document.getElementById('gen-scene');
+  (d.scenes||[]).forEach(s=>{
+    const o = document.createElement('option');
+    o.value = s.name; o.textContent = s.display_name || s.name;
+    sel.appendChild(o);
+  });
+}).catch(()=>{});
+
+const genDrop = document.getElementById('gen-drop-zone');
+const genInput = document.getElementById('gen-file-input');
+genDrop.addEventListener('click', () => genInput.click());
+genDrop.addEventListener('dragover', e => { e.preventDefault(); genDrop.classList.add('dragover'); });
+genDrop.addEventListener('dragleave', () => genDrop.classList.remove('dragover'));
+genDrop.addEventListener('drop', e => {
+  e.preventDefault(); genDrop.classList.remove('dragover');
+  if (e.dataTransfer.files.length) selectGenFile(e.dataTransfer.files[0]);
+});
+genInput.addEventListener('change', () => { if (genInput.files.length) selectGenFile(genInput.files[0]); });
+
+function selectGenFile(file) {
+  genFile = file;
+  document.getElementById('gen-file-info').classList.remove('hidden');
+  document.getElementById('gen-file-info').innerHTML = '📎 <b>' + file.name + '</b> (' + (file.size/1024).toFixed(1) + ' KB)';
+  document.getElementById('gen-start-btn').disabled = false;
+}
+
+async function startGenOcr() {
+  if (!genFile) return;
+  const btn = document.getElementById('gen-start-btn');
+  const prog = document.getElementById('gen-progress');
+  const fill = document.getElementById('gen-progress-fill');
+  const status = document.getElementById('gen-status');
+  btn.disabled = true; btn.textContent = '⏳ 正在识别...';
+  prog.classList.remove('hidden'); fill.style.width = '10%';
+  status.textContent = '正在上传文件并进行OCR识别，请稍候...'; status.style.color = 'var(--accent)';
+
+  const scene = document.getElementById('gen-scene').value;
+  const formData = new FormData();
+  formData.append('file', genFile);
+  formData.append('scene', scene);
+  formData.append('enhance', document.getElementById('gen-enhance')?.checked || false);
+
+  try {
+    fill.style.width = '40%';
+    const res = await fetch('/api/ocr/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    fill.style.width = '100%';
+
+    if (data.error) { status.textContent = '❌ ' + data.error; status.style.color = 'var(--red)'; return; }
+    genResults = data.results || [];
+    status.textContent = '✅ 识别完成！共 ' + genResults.length + ' 条结果'; status.style.color = 'var(--accent2)';
+    document.getElementById('gen-count').textContent = genResults.length;
+    renderGenTable(genResults);
+    document.getElementById('gen-results').classList.remove('hidden');
+  } catch(e) {
+    status.textContent = '❌ 请求失败: ' + e.message; status.style.color = 'var(--red)';
+  } finally {
+    btn.disabled = false; btn.textContent = '🚀 开始识别';
+    setTimeout(() => prog.classList.add('hidden'), 1500);
+  }
+}
+
+function renderGenTable(rows) {
+  const thead = document.getElementById('gen-header');
+  const tbody = document.getElementById('gen-body');
+  if (!rows.length) { thead.innerHTML = '<th>无数据</th>'; tbody.innerHTML = ''; return; }
+  
+  // Hide internal or extremely long columns from table headers
+  const excludeCols = ['img_path', 'text', '原始OCR'];
+  const cols = Object.keys(rows[0]).filter(c => !excludeCols.includes(c));
+  
+  thead.innerHTML = cols.map(c => '<th>' + c + '</th>').join('');
+  tbody.innerHTML = rows.map((r, idx) => {
+    return `<tr onclick="openGenDetail(${idx})" style="cursor:pointer">` + 
+      cols.map(c => {
+        let val = r[c];
+        if (val === undefined || val === null) val = '';
+        return '<td>' + val + '</td>';
+      }).join('') + 
+      '</tr>';
+  }).join('');
+}
+
+function openGenDetail(idx) {
+  const row = genResults[idx];
+  if (!row) return;
+
+  const drawer = document.getElementById('detail-drawer');
+  drawer.dataset.idx = idx;
+
+  // Set title
+  document.getElementById('drawer-title').textContent = '🔍 OCR 对照详情 - ' + (row.filename || '未知文件');
+
+  // Set image path
+  const imgEl = document.getElementById('drawer-img');
+  if (row.img_path) {
+    imgEl.src = row.img_path;
+    imgEl.style.display = 'block';
+  } else {
+    imgEl.src = '';
+    imgEl.style.display = 'none';
+  }
+
+  // Show raw text and fields
+  const textEl = document.getElementById('drawer-raw-text');
+  const fieldsEl = document.getElementById('drawer-fields');
+  
+  const metadataKeys = ['filename', 'img_path', 'text', 'avg_confidence', 'time_ms', 'engine', '原始OCR'];
+  const structuredFields = Object.entries(row).filter(([k, v]) => !metadataKeys.includes(k));
+
+  if (structuredFields.length > 0) {
+    fieldsEl.classList.remove('hidden');
+    fieldsEl.innerHTML = `
+      <div style="font-weight: 600; color: var(--accent2); margin-bottom: 8px; font-size: 0.95em;">📋 结构化解析结果</div>
+      <table style="width:100%; font-size: 0.9em; border-collapse: collapse; margin-bottom: 16px;">
+        ${structuredFields.map(([k, v]) => `
+          <tr style="border-bottom: 1px solid var(--border);">
+            <td style="padding: 6px 8px; font-weight: 600; color: var(--accent); width: 100px; white-space: normal; vertical-align: top;">${k}</td>
+            <td style="padding: 6px 8px; color: var(--text); white-space: normal; max-width: none; vertical-align: top;">${v !== null && v !== undefined ? v : ''}</td>
+          </tr>
+        `).join('')}
+      </table>
+    `;
+  } else {
+    fieldsEl.classList.add('hidden');
+    fieldsEl.innerHTML = '';
+  }
+
+  const rawText = row.text || row.原始OCR || '未提取到文本';
+  textEl.innerHTML = `
+    <div style="font-weight: 600; color: var(--accent2); margin-bottom: 8px; font-size: 0.95em;">📝 原始OCR文本</div>
+    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 12px; border-radius: 6px; max-height: 40vh; overflow-y: auto;">
+      <pre style="white-space: pre-wrap; font-family: monospace; font-size: 0.9em; line-height: 1.5; color: var(--text); margin: 0;">${rawText}</pre>
+    </div>
+  `;
+
+  // Open drawer
+  drawer.classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('detail-drawer').classList.remove('open');
+}
+
+function copyDrawerText() {
+  const idx = document.getElementById('detail-drawer').dataset.idx;
+  const row = genResults[idx];
+  if (!row) return;
+  const rawText = row.text || row.原始OCR || '';
+  navigator.clipboard.writeText(rawText).then(() => {
+    showToast('文本已复制到剪贴板');
+  }).catch(err => {
+    showToast('复制失败: ' + err, 'error');
+  });
+}
+
+async function exportGenResults() {
+  if (!genResults.length) return;
+  try {
+    const res = await fetch('/api/export', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ results: genResults, scene: document.getElementById('gen-scene').value })
+    });
+    if (!res.ok) { showToast('导出失败: ' + res.statusText, 'error'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = 'ocr_result_' + Date.now() + '.xlsx'; a.click();
+    URL.revokeObjectURL(url); showToast('Excel已下载');
+  } catch(e) { showToast('导出失败: ' + e.message, 'error'); }
+}
+
+// ===== Toast =====
+function showToast(msg, type='success') {
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ===== Upload OCR JSON =====
+const ocrDrop = document.getElementById('ocr-drop-zone');
+const ocrInput = document.getElementById('ocr-file-input');
+
+ocrDrop.addEventListener('click', () => ocrInput.click());
+ocrDrop.addEventListener('dragover', e => { e.preventDefault(); ocrDrop.classList.add('dragover'); });
+ocrDrop.addEventListener('dragleave', () => ocrDrop.classList.remove('dragover'));
+ocrDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  ocrDrop.classList.remove('dragover');
+  if (e.dataTransfer.files.length) selectOcrFile(e.dataTransfer.files[0]);
+});
+ocrInput.addEventListener('change', () => { if (ocrInput.files.length) selectOcrFile(ocrInput.files[0]); });
+
+function selectOcrFile(file) {
+  ocrFile = file;
+  document.getElementById('ocr-file-info').classList.remove('hidden');
+  document.getElementById('ocr-file-info').innerHTML = `
+    <span class="tag tag-blue">📄 ${file.name}</span>
+    <span style="color:var(--text2);margin-left:8px;font-size:0.85em">${(file.size/1024).toFixed(1)} KB</span>
+  `;
+  document.getElementById('ocr-upload-btn').disabled = false;
+}
+
+async function uploadOcrResults() {
+  if (!ocrFile) return;
+  const btn = document.getElementById('ocr-upload-btn');
+  const prog = document.getElementById('ocr-progress');
+  const fill = document.getElementById('ocr-progress-fill');
+  const status = document.getElementById('ocr-status');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ 解析中...';
+  prog.classList.remove('hidden');
+  fill.style.width = '30%';
+  status.textContent = '正在上传并解析...';
+
+  try {
+    const fd = new FormData();
+    fd.append('file', ocrFile);
+    const res = await fetch('/api/upload-ocr', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error((await res.json()).detail || '上传失败');
+    const data = await res.json();
+
+    fill.style.width = '100%';
+    status.textContent = `✅ 解析完成：共 ${data.total} 条`;
+    uploadedResults = data.results;
+    showToast(`成功解析 ${data.total} 条记录`);
+    renderResults(data.results);
+  } catch(e) {
+    fill.style.width = '0%';
+    status.textContent = '❌ ' + e.message;
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 开始解析';
+  }
+}
+
+// ===== Render Results =====
+function renderResults(results) {
+  if (!results || !results.length) return;
+
+  // 统计
+  const total = results.length;
+  const hasId = results.filter(r => r['身份证号'] && r['身份证号'] !== 'None' && r['身份证号'] !== '').length;
+  const hasJob = results.filter(r => r['任职情况'] && r['任职情况'] !== 'None' && r['任职情况'] !== '').length;
+
+  document.getElementById('result-stats').innerHTML = `
+    <div class="stat"><div class="num">${total}</div><div class="label">总记录</div></div>
+    <div class="stat"><div class="num" style="color:var(--accent2)">${hasId}</div><div class="label">已提取身份证</div></div>
+    <div class="stat"><div class="num" style="color:var(--accent3)">${hasJob}</div><div class="label">有任职信息</div></div>
+    <div class="stat"><div class="num" style="color:var(--red)">${total - hasId}</div><div class="label">未提取身份证</div></div>
+  `;
+  document.getElementById('result-count').textContent = total;
+
+  // 表头
+  const priority = ['filename', '姓名', '身份证号', '任职情况', '相关企业信息'];
+  const allKeys = new Set();
+  results.forEach(r => Object.keys(r).forEach(k => allKeys.add(k)));
+  const headers = [...priority.filter(k => allKeys.has(k)), ...[...allKeys].filter(k => !priority.includes(k)).sort()];
+
+  document.getElementById('result-header').innerHTML = headers.map(h => `<th>${h}</th>`).join('');
+
+  // 表体
+  document.getElementById('result-body').innerHTML = results.map(r => {
+    return '<tr>' + headers.map(h => {
+      let val = r[h] ?? '';
+      if (val === 'None' || val === 'undefined') val = '';
+      if (h === '身份证号' && val) val = `<span class="tag tag-green">${val}</span>`;
+      else if (h === '任职情况' && val && val !== '无') val = `<span class="tag tag-yellow">${val}</span>`;
+      else if (h === 'filename') val = `<span style="color:var(--text2);font-size:0.85em">${val}</span>`;
+      else val = `<span>${val}</span>`;
+      return `<td title="${String(r[h]||'').replace(/"/g,'&quot;')}">${val}</td>`;
+    }).join('') + '</tr>';
+  }).join('');
+
+  // 切换到结果tab
+  switchTab('results');
+}
+
+// ===== Export =====
+function exportResults() {
+  window.open('/api/uploaded/export');
+}
+
+// ===== Tasks =====
+async function refreshTasks() {
+  try {
+    const res = await fetch('/api/tasks');
+    const data = await res.json();
+    const tasks = data.tasks || [];
+    if (!tasks.length) {
+      document.getElementById('task-list').innerHTML = '暂无任务';
+      return;
+    }
+    document.getElementById('task-list').innerHTML = tasks.map(t => {
+      const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : 0;
+      const statusColor = t.status === 'done' ? 'var(--accent2)' : t.status === 'error' ? 'var(--red)' : 'var(--accent)';
+      return `<div style="padding:12px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-weight:600">${t.name || t.id}</span>
+          <span class="tag" style="color:${statusColor}">${t.status} ${t.done}/${t.total}</span>
+        </div>
+        <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join('');
+  } catch(e) { /* silent */ }
+}
+
+// Auto-refresh tasks
+setInterval(refreshTasks, 5000);
+refreshTasks();
+</script>
+</body>
+</html>

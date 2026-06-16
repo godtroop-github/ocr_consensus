@@ -1,0 +1,1231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OCR 共识处理台</title>
+  <script>
+    (function () {
+      var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
+      document.documentElement.classList.toggle("is-windows", /Win/i.test(platform));
+    })();
+  </script>
+  <style>
+    @font-face {
+      font-family: "OCRSansSC";
+      src: url("/assets/fonts/SourceHanSansSC-Regular.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    :root {
+      --bg: #f6f8f7;
+      --panel: #ffffff;
+      --line: #dfe7e3;
+      --text: #1f2d29;
+      --muted: #687873;
+      --green: #0a6f58;
+      --green-soft: #e8f4ef;
+      --blue: #266d90;
+      --blue-soft: #e8f2f6;
+      --amber: #a76611;
+      --amber-soft: #fbf1df;
+      --red: #b33b31;
+      --red-soft: #fae9e6;
+      --shadow: 0 14px 36px rgba(31, 45, 41, .08);
+      --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Hiragino Sans GB", sans-serif;
+      --font-windows-display: "OCRSansSC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      --font-windows-data: "Microsoft YaHei UI", "Microsoft YaHei", "OCRSansSC", "Noto Sans CJK SC", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        linear-gradient(180deg, rgba(10,111,88,.08), transparent 260px),
+        var(--bg);
+      font-family: var(--font-ui);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wrap {
+      width: min(1480px, calc(100vw - 36px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: -.4px;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card + .card { margin-top: 16px; }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfb;
+    }
+
+    .card-head h2 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .upload {
+      padding: 18px;
+    }
+
+    .drop {
+      min-height: 150px;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      border: 1.5px dashed #aacbc1;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #f9fcfb, #eef7f3);
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .16s ease, background .16s ease, transform .16s ease;
+    }
+
+    .drop.drag {
+      border-color: var(--green);
+      background: #eaf6f1;
+      transform: translateY(-1px);
+    }
+
+    .drop-title {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .drop-desc {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .upload-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 14px;
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 10px;
+      color: #fff;
+      background: var(--green);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .selected {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 20px;
+    }
+
+    .task-name-input {
+      width: min(520px, 100%);
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px solid #bddbd1;
+      border-radius: 10px;
+      background: #fff;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+
+    .task-name-input:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(10, 111, 88, .12);
+    }
+
+    input[type=file] { display: none; }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      background: #fbfcfb;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    tr:hover td { background: #f8fbfa; }
+
+    .task-name {
+      max-width: 380px;
+      font-weight: 750;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .status {
+      display: inline-flex;
+      padding: 6px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .queued { color: var(--amber); background: var(--amber-soft); }
+    .running { color: var(--blue); background: var(--blue-soft); }
+    .completed { color: var(--green); background: var(--green-soft); }
+    .stopped { color: var(--amber); background: var(--amber-soft); }
+    .failed { color: var(--red); background: var(--red-soft); }
+
+    .progress {
+      width: 120px;
+      height: 9px;
+      border-radius: 999px;
+      background: #e8eeeb;
+      overflow: hidden;
+    }
+
+    .bar {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), #78a951);
+      transition: width .22s ease;
+    }
+
+    .phase {
+      color: var(--text);
+      display: block;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.35;
+      white-space: nowrap;
+    }
+
+    .error {
+      margin-top: 3px;
+      color: var(--red);
+      max-width: 340px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .progress-cell {
+      width: 188px;
+      min-width: 188px;
+      max-width: 188px;
+    }
+
+    .file-cell {
+      width: 260px;
+      min-width: 260px;
+      max-width: 260px;
+    }
+
+    .phase-cell {
+      width: 172px;
+      min-width: 172px;
+      max-width: 172px;
+    }
+
+    .status-phase-cell {
+      width: 156px;
+      min-width: 156px;
+      max-width: 156px;
+    }
+
+    .status-phase-stack {
+      display: grid;
+      gap: 7px;
+      align-items: start;
+    }
+
+    .duration-cell {
+      width: 82px;
+      min-width: 82px;
+      max-width: 82px;
+      white-space: nowrap;
+    }
+
+    .phase.done-phase {
+      width: fit-content;
+      max-width: 156px;
+      padding: 5px 10px;
+      border: 1px solid #CFE3D6;
+      border-radius: 999px;
+      background: #E8F3EC;
+      color: #4F7A5F;
+      font-size: 12px;
+    }
+
+    .current-image {
+      display: block;
+      width: 240px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .lane-stack {
+      display: grid;
+      gap: 5px;
+      align-items: start;
+    }
+
+    .lane-row {
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      overflow: visible;
+    }
+
+    .progress-lane {
+      display: grid;
+      grid-template-columns: 62px 108px;
+      gap: 7px;
+    }
+
+    .progress-lane .progress {
+      width: 62px;
+      height: 7px;
+    }
+
+    .lane-metric {
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: visible;
+    }
+
+    .phase-lane {
+      max-width: 156px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .created-time-cell {
+      width: 108px;
+      min-width: 108px;
+      max-width: 108px;
+      white-space: nowrap;
+      line-height: 1.45;
+    }
+
+    .result-cell {
+      width: 104px;
+      min-width: 104px;
+      max-width: 104px;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .link-btn,
+    .danger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-size: 13px;
+      font-weight: 750;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .link-btn {
+      color: var(--green);
+      border-color: #bddbd1;
+      background: var(--green-soft);
+    }
+
+    .danger {
+      color: var(--red);
+      border-color: #efc7c2;
+      background: var(--red-soft);
+    }
+
+    .danger:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .empty {
+      padding: 42px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    /* Phase 1 visual refresh: calm paper review desk */
+    :root {
+      --bg: #F8F6F0;
+      --bg-soft: #F3F0E8;
+      --panel: #FFFDF8;
+      --panel-white: #FFFFFF;
+      --line: #E6E0D4;
+      --line-soft: #EEE8DC;
+      --text: #2F2A24;
+      --muted: #7B746A;
+      --soft: #A9A196;
+      --green: #7F9D8C;
+      --green-strong: #5E7668;
+      --green-soft: #E7F0EA;
+      --blue: #637D93;
+      --blue-soft: #E8EEF4;
+      --amber: #9A7A3F;
+      --amber-soft: #F5EDD9;
+      --red: #B46458;
+      --red-soft: #F8E7E3;
+      --shadow: 0 10px 32px rgba(62, 54, 43, .055);
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 12% 8%, rgba(221, 235, 226, .75), transparent 240px),
+        radial-gradient(circle at 88% 4%, rgba(216, 185, 154, .22), transparent 260px),
+        linear-gradient(180deg, rgba(255,253,248,.88), rgba(248,246,240,.96)),
+        var(--bg);
+      font-family: var(--font-ui);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wrap {
+      width: min(1280px, calc(100vw - 48px));
+      padding: 32px 0 48px;
+      position: relative;
+    }
+
+    .wrap::before {
+      content: "";
+      position: fixed;
+      right: 34px;
+      top: 72px;
+      width: 168px;
+      height: 168px;
+      pointer-events: none;
+      opacity: .16;
+      background:
+        radial-gradient(ellipse at 50% 85%, transparent 42%, #7F9D8C 43%, #7F9D8C 44%, transparent 45%),
+        radial-gradient(ellipse at 38% 45%, transparent 45%, #7F9D8C 46%, #7F9D8C 47%, transparent 48%),
+        radial-gradient(ellipse at 66% 36%, transparent 45%, #7F9D8C 46%, #7F9D8C 47%, transparent 48%);
+      transform: rotate(-14deg);
+    }
+
+    .topbar {
+      align-items: center;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      font-family: var(--font-ui);
+      font-size: clamp(28px, 3vw, 36px);
+      font-weight: 500;
+      color: var(--text);
+      letter-spacing: -.6px;
+    }
+
+    .sub {
+      max-width: 760px;
+      color: var(--muted);
+    }
+
+    .chip {
+      color: var(--green-strong);
+      background: var(--green-soft);
+      border: 1px solid #CFE3D6;
+      font-weight: 650;
+    }
+
+    .card {
+      border-color: var(--line);
+      border-radius: 22px;
+      background: rgba(255,253,248,.92);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .card + .card {
+      margin-top: 20px;
+    }
+
+    .card-head {
+      padding: 18px 22px;
+      background: rgba(255,253,248,.72);
+      border-bottom-color: var(--line-soft);
+    }
+
+    .card-head h2 {
+      font-family: var(--font-ui);
+      font-weight: 500;
+      font-size: 18px;
+    }
+
+    .upload {
+      padding: 22px;
+    }
+
+    .drop {
+      min-height: 188px;
+      border-color: #CDBFAE;
+      border-radius: 22px;
+      background:
+        linear-gradient(135deg, rgba(255,253,248,.96), rgba(241,246,243,.86)),
+        repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(238,232,220,.34) 29px);
+      transition: border-color .18s ease, background .18s ease, transform .18s ease, box-shadow .18s ease;
+    }
+
+    .drop:hover,
+    .drop.drag {
+      border-color: var(--green);
+      background: linear-gradient(135deg, #FFFDF8, #F1F6F3);
+      box-shadow: 0 12px 30px rgba(127,157,140,.12);
+      transform: translateY(-1px);
+    }
+
+    .drop-title {
+      font-family: var(--font-ui);
+      font-size: 22px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .drop-desc,
+    .selected {
+      color: var(--muted);
+    }
+
+    .task-name-input {
+      border-color: var(--line);
+      border-radius: 999px;
+      background: rgba(255,253,248,.88);
+      padding: 11px 16px;
+    }
+
+    .task-name-input:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(221,235,226,.9);
+    }
+
+    .upload-btn,
+    .link-btn {
+      border-radius: 999px;
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+      box-shadow: 0 8px 20px rgba(127,157,140,.16);
+    }
+
+    .upload-btn:hover,
+    .link-btn:hover {
+      background: #6F8E7E;
+      border-color: #6F8E7E;
+    }
+
+    .danger {
+      border-radius: 999px;
+      color: var(--red);
+      border-color: #EAC8C1;
+      background: var(--red-soft);
+    }
+
+    .table-wrap {
+      background: rgba(255,253,248,.84);
+    }
+
+    table {
+      font-size: 13px;
+    }
+
+    th {
+      background: rgba(243,240,232,.58);
+      color: var(--muted);
+      border-bottom-color: var(--line-soft);
+    }
+
+    td {
+      border-bottom-color: var(--line-soft);
+    }
+
+    tr:hover td {
+      background: #F9F7F1;
+    }
+
+    .task-name {
+      color: var(--text);
+    }
+
+    .task-cell {
+      width: 238px;
+      min-width: 238px;
+      max-width: 238px;
+    }
+
+    .task-cell .task-name,
+    .task-cell .task-meta,
+    .task-cell .task-submeta {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .task-meta {
+      margin-top: 5px;
+      line-height: 1.35;
+    }
+
+    .task-submeta {
+      margin-top: 2px;
+      line-height: 1.35;
+    }
+
+    .mono {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    th,
+    td {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+
+    .actions.icon-actions {
+      gap: 6px;
+      align-items: center;
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+    }
+
+    .icon-btn {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      border: 1px solid var(--line-soft);
+      background: #FFFDF8;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 750;
+      line-height: 1;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .icon-btn:hover {
+      color: var(--text);
+      border-color: #D7D0C2;
+      background: #F8F6F0;
+    }
+
+    .icon-btn.danger {
+      color: var(--red);
+      background: #FFF8F6;
+      border-color: #EAC8C1;
+    }
+
+    .icon-btn:disabled {
+      opacity: .42;
+      cursor: not-allowed;
+    }
+
+    .icon-placeholder {
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+    }
+
+    .status {
+      border: 1px solid transparent;
+      font-weight: 650;
+    }
+
+    .queued,
+    .stopped { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
+    .running { color: var(--blue); background: var(--blue-soft); border-color: #CFDAE4; }
+    .completed { color: #4F7A5F; background: #E8F3EC; border-color: #CFE3D6; }
+    .failed { color: var(--red); background: var(--red-soft); border-color: #EAC8C1; }
+
+    .progress {
+      background: #ECE9E4;
+    }
+
+    .bar {
+      background: linear-gradient(90deg, #7F9D8C, #A8BFAF);
+    }
+
+    @media (max-width: 900px) {
+      .wrap { width: min(100vw - 24px, 760px); }
+      .topbar { display: block; }
+      table { min-width: 1020px; }
+      .task-cell {
+        width: 220px;
+        min-width: 220px;
+        max-width: 220px;
+      }
+      .progress-cell {
+        width: 178px;
+        min-width: 178px;
+        max-width: 178px;
+      }
+      .file-cell {
+        width: 220px;
+        min-width: 220px;
+        max-width: 220px;
+      }
+      .progress { width: 100px; }
+      .current-image { width: 200px; }
+      .phase-cell {
+        width: 160px;
+        min-width: 160px;
+        max-width: 160px;
+      }
+      .phase,
+      .phase-lane { max-width: 144px; }
+      .status-phase-cell {
+        width: 152px;
+        min-width: 152px;
+        max-width: 152px;
+      }
+      .duration-cell {
+        width: 80px;
+        min-width: 80px;
+        max-width: 80px;
+      }
+    }
+
+    html.is-windows body {
+      font-family: var(--font-windows-data);
+      text-rendering: optimizeLegibility;
+    }
+
+    html.is-windows h1,
+    html.is-windows .card-head h2,
+    html.is-windows .drop-title {
+      font-family: var(--font-windows-display);
+      letter-spacing: 0;
+    }
+
+    html.is-windows table,
+    html.is-windows input,
+    html.is-windows select,
+    html.is-windows button {
+      font-family: var(--font-windows-data);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>OCR 共识处理台</h1>
+        <p class="sub">专注每一次识别，让数据更准确。上传影像文件后，系统会依次完成四路 OCR、规则增强、字段共识和审阅页生成。</p>
+      </div>
+      <div class="chip">安静审阅 · 4OCR 共识 · Harness 增强</div>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>新建任务</h2>
+        <span class="chip">支持多图 / ZIP</span>
+      </div>
+      <div class="upload">
+        <div id="drop" class="drop">
+          <div>
+            <span class="drop-title">创建一份新的 OCR 审阅任务</span>
+            <span class="drop-desc">拖入图片或 ZIP，也可以点击选择文件；系统会自动加入队列并生成稽核列表。</span>
+            <br />
+            <input id="taskName" class="task-name-input" type="text" placeholder="任务名称（可选，例如：经商办企回归-第3轮）" />
+            <br />
+            <button id="submit" class="upload-btn" type="button">选择文件</button>
+          </div>
+        </div>
+        <input id="file" type="file" accept=".zip,image/*" multiple />
+        <div id="selected" class="selected">尚未选择文件</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>任务队列</h2>
+        <div id="stats" class="stats"></div>
+      </div>
+      <div id="table" class="table-wrap"></div>
+    </section>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fileInput = $("file");
+    const submit = $("submit");
+    const drop = $("drop");
+    const table = $("table");
+    const stats = $("stats");
+    const selected = $("selected");
+    const taskName = $("taskName");
+
+    const ENGINE_LABELS = {
+      paddleocr_2_7_3: "PaddleOCR 2.7.3",
+      rapidocr_2_7_3: "RapidOCR",
+      rapidocr_isolated: "RapidOCR isolated",
+      paddleocr_3_x: "PaddleOCR 3.x",
+    };
+    const ENGINE_ORDER = ["paddleocr_2_7_3", "rapidocr_2_7_3", "rapidocr_isolated", "paddleocr_3_x"];
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function statusLabel(status) {
+      const map = { queued: "排队中", running: "处理中", completed: "已完成", stopped: "已停止", failed: "失败" };
+      return map[status] || status || "未知";
+    }
+
+    function fmtBytes(n) {
+      if (!n) return "0 B";
+      const units = ["B", "KB", "MB", "GB"];
+      let v = n;
+      let i = 0;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      return `${v.toFixed(i ? 1 : 0)} ${units[i]}`;
+    }
+
+    function fmtTime(s) {
+      if (!s) return "—";
+      return String(s).replace("T", " ");
+    }
+
+    function parseDate(s) {
+      if (!s) return null;
+      const d = new Date(String(s).replace(" ", "T"));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    function fmtDuration(ms) {
+      if (!Number.isFinite(ms) || ms < 0) return "—";
+      const total = Math.floor(ms / 1000);
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      if (h > 0) return `${h}h ${m}m ${s}s`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function taskDuration(t) {
+      let ms = Number(t.run_elapsed_ms || 0);
+      const activeSince = Number(t.run_active_since_ms || 0);
+      if (t.status === "running" && activeSince > 0) {
+        ms += Math.max(0, Date.now() - activeSince);
+      }
+      if (ms > 0 || ["running", "completed", "stopped", "failed"].includes(t.status)) {
+        return fmtDuration(ms);
+      }
+      return "—";
+    }
+
+    function renderCreatedTime(value) {
+      const text = fmtTime(value);
+      if (!text || text === "—") return "—";
+      const parts = text.split(/\s+/);
+      if (parts.length >= 2) {
+        return `${esc(parts[0])}<br>${esc(parts.slice(1).join(" "))}`;
+      }
+      return esc(text);
+    }
+
+    function simplePhase(t) {
+      const phase = String(t.phase || "");
+      if (t.status === "queued") return "排队等待";
+      if (t.status === "stopped") return "已停止，可继续";
+      if (t.status === "completed") return "完成";
+      if (t.status === "failed") return "失败";
+      if (phase === "ocr:all_parallel") return "OCR 并行识别";
+      if (phase === "ocr:all_parallel:done") return "OCR 完成，准备共识";
+      if (phase.startsWith("ocr:")) return `OCR：${ENGINE_LABELS[t.current_engine] || t.current_engine || "识别"}`;
+      if (phase === "extracting_images") return "整理图片";
+      if (phase === "images_ready") return "准备识别";
+      if (phase === "harness_parse_and_consensus") return "共识处理：规则增强与字段决策";
+      if (phase === "building_dashboard") return "结果整理：生成列表和详情页";
+      return phase || "处理中";
+    }
+
+    function isOcrParallel(t) {
+      const phase = String(t.phase || "");
+      const engineProgress = t.engine_progress || {};
+      return t.status === "running" && phase.startsWith("ocr:") && (phase.includes("all_parallel") || Object.keys(engineProgress).length > 1);
+    }
+
+    function engineState(t, engine) {
+      return (t.engine_progress || {})[engine] || {};
+    }
+
+    function enginePercent(state) {
+      return Math.max(0, Math.min(100, Math.round(Number(state.fraction || 0) * 100)));
+    }
+
+    function engineIndexText(state) {
+      const index = Number(state.index || 0);
+      const total = Number(state.total || 0);
+      if (!total) return "等待";
+      return `${index}/${total}`;
+    }
+
+    function engineStageText(engine, state) {
+      const label = ENGINE_LABELS[engine] || engine;
+      if (state.stage === "done") return `${label} · 已完成`;
+      if (state.stage === "error") return `${label} · 出错`;
+      if (!state.total) return `${label} · 等待`;
+      return `${label} · 进行中`;
+    }
+
+    function renderProgressCell(t) {
+      if (isOcrParallel(t)) {
+        return `
+          <div class="lane-stack">
+            ${ENGINE_ORDER.map((engine) => {
+              const state = engineState(t, engine);
+              const pct = enginePercent(state);
+              return `
+                <div class="lane-row progress-lane">
+                  <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
+                  <div class="mono lane-metric">${pct}% · ${esc(engineIndexText(state))}</div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `;
+      }
+      return `
+        <div class="progress"><div class="bar" style="width:${Number(t.progress || 0)}%"></div></div>
+        <div class="mono">${Number(t.progress || 0)}%${t.current_image ? ` · ${Number(t.current_image_index || 0)}/${Number(t.current_image_total || 0)}` : ""}</div>
+      `;
+    }
+
+    function renderCurrentFileCell(t) {
+      if (isOcrParallel(t)) {
+        return `
+          <div class="lane-stack">
+            ${ENGINE_ORDER.map((engine) => {
+              const state = engineState(t, engine);
+              const name = state.filename || "—";
+              return `<div class="lane-row"><div class="mono current-image" title="${esc(name)}">${esc(name)}</div></div>`;
+            }).join("")}
+          </div>
+        `;
+      }
+      return t.current_image ? `<div class="mono current-image" title="${esc(t.current_image)}">${esc(t.current_image)}</div>` : `<span class="mono">—</span>`;
+    }
+
+    function renderPhaseCell(t) {
+      if (isOcrParallel(t)) {
+        return `
+          <div class="lane-stack">
+            ${ENGINE_ORDER.map((engine) => {
+              const state = engineState(t, engine);
+              const text = engineStageText(engine, state);
+              return `<div class="lane-row"><div class="phase-lane" title="${esc(text)}">${esc(text)}</div></div>`;
+            }).join("")}
+          </div>
+          ${t.error ? `<div class="error" title="${esc(t.error)}">${esc(t.error)}</div>` : ""}
+        `;
+      }
+      const phase = simplePhase(t);
+      return `
+        <div class="phase" title="${esc(phase)}">${esc(phase)}</div>
+        ${t.error ? `<div class="error" title="${esc(t.error)}">${esc(t.error)}</div>` : ""}
+      `;
+    }
+
+    function renderStatusPhaseCell(t) {
+      if (t.status === "completed") {
+        return `<div class="phase done-phase" title="完成">完成</div>`;
+      }
+      if (t.status === "failed") {
+        return `
+          <div class="status-phase-stack">
+            <div class="phase" title="失败">失败</div>
+            ${t.error ? `<div class="error" title="${esc(t.error)}">${esc(t.error)}</div>` : ""}
+          </div>
+        `;
+      }
+      if (t.status === "stopped") {
+        return `<div class="phase" title="已停止，可继续">已停止，可继续</div>`;
+      }
+      return renderPhaseCell(t);
+    }
+
+    function updateSelected() {
+      const files = Array.from(fileInput.files || []);
+      if (!files.length) {
+        selected.textContent = "尚未选择文件";
+        return;
+      }
+      const total = files.reduce((sum, file) => sum + file.size, 0);
+      const names = files.slice(0, 3).map((file) => file.name).join("、");
+      selected.textContent = `${files.length} 个文件，${fmtBytes(total)}：${names}${files.length > 3 ? " ..." : ""}`;
+    }
+
+    async function uploadFiles(files) {
+      if (!files.length) {
+        alert("请先选择图片或 ZIP");
+        return;
+      }
+      submit.disabled = true;
+      submit.textContent = "正在入队...";
+      try {
+        const fd = new FormData();
+        const name = (taskName.value || "").trim();
+        if (name) fd.append("task_name", name);
+        files.forEach((file) => fd.append("files", file));
+        const res = await fetch("/api/tasks", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "创建失败");
+        fileInput.value = "";
+        taskName.value = "";
+        updateSelected();
+        await refresh();
+      } catch (err) {
+        alert(err.message || String(err));
+      } finally {
+        submit.disabled = false;
+        submit.textContent = "选择文件";
+      }
+    }
+
+    async function deleteTask(id) {
+      if (!confirm("确认删除这个任务记录和结果文件？")) return;
+      const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || "删除失败");
+        return;
+      }
+      await refresh();
+    }
+
+    async function stopTask(id) {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/stop`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || "停止失败");
+        return;
+      }
+      await refresh();
+    }
+
+    async function resumeTask(id) {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/resume`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || "继续失败");
+        return;
+      }
+      await refresh();
+    }
+
+    function renderStats(tasks, queueSize) {
+      const counts = tasks.reduce((acc, task) => {
+        acc[task.status] = (acc[task.status] || 0) + 1;
+        return acc;
+      }, {});
+      stats.innerHTML = [
+        `总任务 ${tasks.length}`,
+        `等待 ${queueSize}`,
+        `处理中 ${counts.running || 0}`,
+        `停止 ${counts.stopped || 0}`,
+        `完成 ${counts.completed || 0}`,
+        `失败 ${counts.failed || 0}`,
+      ].map((x) => `<span class="chip">${x}</span>`).join("");
+    }
+
+    function render(tasks, queueSize) {
+      renderStats(tasks, queueSize);
+      if (!tasks.length) {
+        table.innerHTML = `<div class="empty">暂无任务。上传图片或 ZIP 后会自动加入队列。</div>`;
+        return;
+      }
+
+      table.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>任务</th>
+              <th>阶段</th>
+              <th>导入时间</th>
+              <th>处理时长</th>
+              <th>进度</th>
+              <th>当前文件</th>
+              <th>结果</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tasks.map((t) => `
+              <tr>
+                <td class="task-cell">
+                  <div class="task-name" title="${esc(t.name)}">${esc(t.name)}</div>
+                  <div class="mono task-meta">${esc(t.id)}</div>
+                  <div class="mono task-submeta">${fmtBytes(t.input_size)} · ${Number(t.records_total || t.files_total || 0)} 张</div>
+                </td>
+                <td class="status-phase-cell">
+                  ${renderStatusPhaseCell(t)}
+                </td>
+                <td class="mono created-time-cell">${renderCreatedTime(t.created_at)}</td>
+                <td class="mono duration-cell">${taskDuration(t)}</td>
+                <td class="progress-cell">
+                  ${renderProgressCell(t)}
+                </td>
+                <td class="file-cell">
+                  ${renderCurrentFileCell(t)}
+                </td>
+                <td class="result-cell">
+                  <div class="actions icon-actions">
+                    ${t.dashboard_url ? `<a class="icon-btn" href="${esc(t.dashboard_url)}" title="查看结果" aria-label="查看结果">↗</a>` : ""}
+                    ${["queued", "running"].includes(t.status) ? `<button class="icon-btn danger" title="停止" aria-label="停止" onclick="stopTask('${esc(t.id)}')">■</button>` : ""}
+                    ${["stopped", "failed"].includes(t.status) ? `<button class="icon-btn" title="继续" aria-label="继续" onclick="resumeTask('${esc(t.id)}')">▶</button>` : ""}
+                    <button class="icon-btn danger" title="删除" aria-label="删除" ${t.status === "running" ? "disabled" : ""} onclick="deleteTask('${esc(t.id)}')">×</button>
+                  </div>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>`;
+    }
+
+    async function refresh() {
+      const res = await fetch("/api/tasks");
+      const data = await res.json();
+      render(data.tasks || [], data.queue_size || 0);
+    }
+
+    submit.addEventListener("click", (e) => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+    taskName.addEventListener("click", (e) => e.stopPropagation());
+    drop.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      updateSelected();
+      uploadFiles(Array.from(fileInput.files || []));
+    });
+
+    for (const ev of ["dragenter", "dragover"]) {
+      drop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        drop.classList.add("drag");
+      });
+    }
+    for (const ev of ["dragleave", "drop"]) {
+      drop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        drop.classList.remove("drag");
+      });
+    }
+    drop.addEventListener("drop", (e) => {
+      const files = Array.from(e.dataTransfer.files || []);
+      if (!files.length) return;
+      const dt = new DataTransfer();
+      files.forEach((file) => dt.items.add(file));
+      fileInput.files = dt.files;
+      updateSelected();
+      uploadFiles(files);
+    });
+
+    updateSelected();
+    refresh();
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>
