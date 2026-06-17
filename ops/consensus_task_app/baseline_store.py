@@ -12,6 +12,13 @@ from typing import Any, Dict, Iterable, List, Optional
 BASELINE_TYPES = {"snapshot", "candidate", "golden"}
 BUSINESS_FIELDS = ["姓名", "身份证号", "相关企业", "任职", "参股"]
 COUNT_FIELDS = {"相关企业", "任职", "参股"}
+EMPLOYMENT_FIELDS = ["企业名称", "经营状态", "承担职务", "持股比例"]
+EMPLOYMENT_FIELD_KEYS = {
+    "企业名称": "company_name",
+    "经营状态": "business_status",
+    "承担职务": "role",
+    "持股比例": "share_ratio",
+}
 
 
 class BaselineError(ValueError):
@@ -292,6 +299,8 @@ class BaselineStore:
             raise BaselineError("task has no structured records to compare")
 
         baseline_records = list(baseline.get("records") or [])
+        baseline_employment_by_record = self._employment_by_record_id(baseline.get("employment_rows") or [])
+        current_employment_by_record = self._current_employment_by_record_id(task_dir, current_records)
         baseline_index: Dict[str, List[Dict[str, Any]]] = {}
         for row in baseline_records:
             for key in self._match_keys(row):
@@ -309,14 +318,29 @@ class BaselineStore:
                     break
             if matched:
                 used_baseline_ids.add(_to_text(matched.get("id")))
-                diff_records.append(self._diff_record(matched, current, "matched"))
+                diff_records.append(
+                    self._diff_record(
+                        matched,
+                        current,
+                        "matched",
+                        baseline_employment_by_record.get(_to_text(matched.get("id")), []),
+                        current_employment_by_record.get(_to_text(current.get("id")), []),
+                    )
+                )
             else:
-                diff_records.append(self._new_record_diff(current))
+                diff_records.append(
+                    self._new_record_diff(current, current_employment_by_record.get(_to_text(current.get("id")), []))
+                )
 
         for baseline_record in baseline_records:
             if _to_text(baseline_record.get("id")) in used_baseline_ids:
                 continue
-            diff_records.append(self._missing_record_diff(baseline_record))
+            diff_records.append(
+                self._missing_record_diff(
+                    baseline_record,
+                    baseline_employment_by_record.get(_to_text(baseline_record.get("id")), []),
+                )
+            )
 
         summary = self._compare_summary(diff_records, baseline_records, current_records)
         return {
@@ -540,6 +564,71 @@ class BaselineStore:
             rows.append(row)
         return rows
 
+    def _employment_by_record_id(self, rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for idx, row in enumerate(rows, start=1):
+            record_id = _to_text(row.get("baseline_record_id"))
+            if not record_id:
+                continue
+            grouped.setdefault(record_id, []).append(self._normalize_employment_row(row, idx))
+        return grouped
+
+    def _current_employment_by_record_id(
+        self,
+        task_dir: Path,
+        current_records: List[Dict[str, Any]],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        person_to_record: Dict[str, str] = {}
+        for rec in current_records:
+            file_id = _to_text(rec.get("file_id"))
+            person_name = _to_text(rec.get("person_name"))
+            record_id = _to_text(rec.get("id"))
+            record_key = _to_text(rec.get("record_key"))
+            if file_id and person_name:
+                person_to_record[f"{file_id}-{person_name}"] = record_id
+            if record_key:
+                person_to_record[record_key] = record_id
+
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for idx, row in enumerate(self._load_employment_rows(task_dir), start=1):
+            person_key = _to_text(row.get("人员键"))
+            if not person_key:
+                file_no = _to_text(row.get("文件编号"))
+                name = _to_text(row.get("姓名"))
+                person_key = f"{file_no}-{name}" if file_no and name else ""
+            record_id = person_to_record.get(person_key)
+            if not record_id:
+                file_no = _to_text(row.get("文件编号"))
+                name = _to_text(row.get("姓名"))
+                if file_no and name:
+                    record_id = person_to_record.get(_record_key(file_no, name, "", _to_text(row.get("文件名"))))
+            if not record_id:
+                continue
+            grouped.setdefault(record_id, []).append(self._normalize_employment_row(row, idx))
+        return grouped
+
+    def _normalize_employment_row(self, row: Dict[str, Any], idx: int) -> Dict[str, Any]:
+        company_name = _to_text(row.get("company_name") or row.get("企业名称"))
+        company_key = _to_text(row.get("company_key")) or _normalize_company_key(company_name)
+        row_index = row.get("row_index") or row.get("企业序号") or idx
+        try:
+            row_index_int = int(row_index)
+        except Exception:
+            row_index_int = idx
+        evidence = row.get("evidence_summary") if isinstance(row.get("evidence_summary"), dict) else row
+        return {
+            "id": _to_text(row.get("id")) or f"employment_{idx:06d}",
+            "row_index": row_index_int,
+            "company_key": company_key,
+            "company_name": company_name,
+            "business_status": _to_text(row.get("business_status") or row.get("经营状态")),
+            "role": _to_text(row.get("role") or row.get("承担职务")),
+            "share_ratio": _to_text(row.get("share_ratio") or row.get("持股比例")),
+            "source_image": _to_text(row.get("source_image") or row.get("来源文件") or row.get("文件名")),
+            "row_status": _to_text(row.get("row_status")) or self._employment_row_status(row),
+            "evidence_summary": evidence,
+        }
+
     def _match_keys(self, row: Dict[str, Any]) -> List[str]:
         keys: List[str] = []
         record_key = _to_text(row.get("record_key"))
@@ -581,7 +670,14 @@ class BaselineStore:
             "review_status": row.get("review_status"),
         }
 
-    def _diff_record(self, baseline: Dict[str, Any], current: Dict[str, Any], match_status: str) -> Dict[str, Any]:
+    def _diff_record(
+        self,
+        baseline: Dict[str, Any],
+        current: Dict[str, Any],
+        match_status: str,
+        baseline_employment: Optional[List[Dict[str, Any]]] = None,
+        current_employment: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         baseline_values = self._business_field_values(baseline)
         current_values = self._business_field_values(current)
         field_diffs = []
@@ -608,9 +704,11 @@ class BaselineStore:
             )
 
         capture_status = self._capture_time_diff_status(baseline, current)
-        business_changed = bool(field_diffs)
+        employment_diff = self._diff_employment_rows(baseline_employment or [], current_employment or [])
+        employment_diffs = employment_diff["diffs"]
+        business_changed = bool(field_diffs or employment_diffs)
         business_status = "changed" if business_changed else "same"
-        severity = self._record_severity(business_changed, capture_status, field_diffs)
+        severity = self._record_severity(business_changed, capture_status, field_diffs, employment_diffs)
         requires_review = severity in {"medium", "high", "critical"}
         if not business_changed and capture_status in {"newer", "same", "filled"}:
             requires_review = False
@@ -624,11 +722,18 @@ class BaselineStore:
             "severity": severity,
             "requires_review": requires_review,
             "field_diffs": field_diffs,
+            "employment_diffs": employment_diffs,
+            "employment_summary": employment_diff["summary"],
             "baseline": self._public_record(baseline),
             "current": self._public_record(current),
         }
 
-    def _new_record_diff(self, current: Dict[str, Any]) -> Dict[str, Any]:
+    def _new_record_diff(
+        self,
+        current: Dict[str, Any],
+        current_employment: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        employment_diffs = self._employment_added_diffs(current_employment or [])
         return {
             "record_key": current.get("record_key"),
             "match_status": "unmatched_new",
@@ -647,11 +752,18 @@ class BaselineStore:
                     "severity": "high",
                 }
             ],
+            "employment_diffs": employment_diffs,
+            "employment_summary": self._employment_summary([], current_employment or [], 0, 0, len(current_employment or []), 0),
             "baseline": None,
             "current": self._public_record(current),
         }
 
-    def _missing_record_diff(self, baseline: Dict[str, Any]) -> Dict[str, Any]:
+    def _missing_record_diff(
+        self,
+        baseline: Dict[str, Any],
+        baseline_employment: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        employment_diffs = self._employment_missing_diffs(baseline_employment or [])
         return {
             "record_key": baseline.get("record_key"),
             "match_status": "unmatched_missing",
@@ -670,6 +782,8 @@ class BaselineStore:
                     "severity": "high",
                 }
             ],
+            "employment_diffs": employment_diffs,
+            "employment_summary": self._employment_summary(baseline_employment or [], [], 0, 0, 0, len(baseline_employment or [])),
             "baseline": self._public_record(baseline),
             "current": None,
         }
@@ -695,11 +809,21 @@ class BaselineStore:
             return "older"
         return "changed"
 
-    def _record_severity(self, business_changed: bool, capture_status: str, field_diffs: List[Dict[str, Any]]) -> str:
+    def _record_severity(
+        self,
+        business_changed: bool,
+        capture_status: str,
+        field_diffs: List[Dict[str, Any]],
+        employment_diffs: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
         if business_changed and capture_status == "older":
             return "critical"
         if any(diff.get("field_name") == "身份证号" for diff in field_diffs):
             return "high"
+        if employment_diffs:
+            if any(diff.get("severity") == "high" for diff in employment_diffs):
+                return "high"
+            return "medium"
         if business_changed:
             return "high"
         if capture_status == "older":
@@ -729,6 +853,8 @@ class BaselineStore:
             "capture_time_older": 0,
             "requires_review": 0,
             "field_diff_count": 0,
+            "employment_changed_records": 0,
+            "employment_diff_count": 0,
             "severity": {"info": 0, "low": 0, "medium": 0, "high": 0, "critical": 0},
         }
         for rec in diff_records:
@@ -749,11 +875,187 @@ class BaselineStore:
             if rec.get("requires_review"):
                 summary["requires_review"] += 1
             summary["field_diff_count"] += len(rec.get("field_diffs") or [])
+            if rec.get("employment_diffs"):
+                summary["employment_changed_records"] += 1
+                summary["employment_diff_count"] += len(rec.get("employment_diffs") or [])
             sev = _to_text(rec.get("severity")) or "info"
             if sev not in summary["severity"]:
                 summary["severity"][sev] = 0
             summary["severity"][sev] += 1
         return summary
+
+    def _diff_employment_rows(
+        self,
+        baseline_rows: List[Dict[str, Any]],
+        current_rows: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        diffs: List[Dict[str, Any]] = []
+        used_current: set[int] = set()
+        matched = 0
+        changed = 0
+
+        for baseline_row in baseline_rows:
+            current_idx = self._find_employment_match(baseline_row, current_rows, used_current)
+            if current_idx is None:
+                diffs.extend(self._employment_missing_diffs([baseline_row]))
+                continue
+            used_current.add(current_idx)
+            current_row = current_rows[current_idx]
+            matched += 1
+            row_changed = False
+            for field in EMPLOYMENT_FIELDS:
+                key = EMPLOYMENT_FIELD_KEYS[field]
+                bval = self._normalize_employment_value(field, baseline_row.get(key))
+                cval = self._normalize_employment_value(field, current_row.get(key))
+                if bval == cval:
+                    continue
+                row_changed = True
+                diffs.append(
+                    {
+                        "section": "employment",
+                        "field_name": field,
+                        "baseline_value": bval,
+                        "current_value": cval,
+                        "diff_type": self._employment_field_diff_type(field),
+                        "severity": self._employment_field_severity(field),
+                        "baseline_row": self._public_employment_row(baseline_row),
+                        "current_row": self._public_employment_row(current_row),
+                    }
+                )
+            if row_changed:
+                changed += 1
+
+        added_rows = [row for idx, row in enumerate(current_rows) if idx not in used_current]
+        diffs.extend(self._employment_added_diffs(added_rows))
+        return {
+            "diffs": diffs,
+            "summary": self._employment_summary(
+                baseline_rows,
+                current_rows,
+                matched,
+                changed,
+                len(added_rows),
+                len([d for d in diffs if d.get("diff_type") == "company_missing"]) // max(1, len(EMPLOYMENT_FIELDS)),
+            ),
+        }
+
+    def _find_employment_match(
+        self,
+        baseline_row: Dict[str, Any],
+        current_rows: List[Dict[str, Any]],
+        used_current: set[int],
+    ) -> Optional[int]:
+        baseline_key = _to_text(baseline_row.get("company_key"))
+        baseline_placeholder = self._is_placeholder_company(baseline_row)
+        for idx, current_row in enumerate(current_rows):
+            if idx in used_current:
+                continue
+            current_key = _to_text(current_row.get("company_key"))
+            if baseline_key and current_key and baseline_key == current_key and not baseline_placeholder:
+                return idx
+        for idx, current_row in enumerate(current_rows):
+            if idx in used_current:
+                continue
+            if (
+                baseline_placeholder
+                and self._is_placeholder_company(current_row)
+                and baseline_row.get("row_index") == current_row.get("row_index")
+            ):
+                return idx
+        return None
+
+    def _employment_added_diffs(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        diffs: List[Dict[str, Any]] = []
+        for row in rows:
+            for field in EMPLOYMENT_FIELDS:
+                key = EMPLOYMENT_FIELD_KEYS[field]
+                diffs.append(
+                    {
+                        "section": "employment",
+                        "field_name": field,
+                        "baseline_value": "",
+                        "current_value": self._normalize_employment_value(field, row.get(key)),
+                        "diff_type": "company_added",
+                        "severity": "high",
+                        "baseline_row": None,
+                        "current_row": self._public_employment_row(row),
+                    }
+                )
+        return diffs
+
+    def _employment_missing_diffs(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        diffs: List[Dict[str, Any]] = []
+        for row in rows:
+            for field in EMPLOYMENT_FIELDS:
+                key = EMPLOYMENT_FIELD_KEYS[field]
+                diffs.append(
+                    {
+                        "section": "employment",
+                        "field_name": field,
+                        "baseline_value": self._normalize_employment_value(field, row.get(key)),
+                        "current_value": "",
+                        "diff_type": "company_missing",
+                        "severity": "high",
+                        "baseline_row": self._public_employment_row(row),
+                        "current_row": None,
+                    }
+                )
+        return diffs
+
+    def _employment_summary(
+        self,
+        baseline_rows: List[Dict[str, Any]],
+        current_rows: List[Dict[str, Any]],
+        matched: int,
+        changed: int,
+        added: int,
+        missing: int,
+    ) -> Dict[str, Any]:
+        return {
+            "baseline_rows": len(baseline_rows),
+            "current_rows": len(current_rows),
+            "matched_rows": matched,
+            "changed_rows": changed,
+            "added_rows": added,
+            "missing_rows": missing,
+        }
+
+    def _public_employment_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "row_index": row.get("row_index"),
+            "company_key": row.get("company_key"),
+            "company_name": row.get("company_name"),
+            "business_status": row.get("business_status"),
+            "role": row.get("role"),
+            "share_ratio": row.get("share_ratio"),
+            "source_image": row.get("source_image"),
+            "row_status": row.get("row_status"),
+        }
+
+    def _is_placeholder_company(self, row: Dict[str, Any]) -> bool:
+        company_name = _to_text(row.get("company_name"))
+        company_key = _to_text(row.get("company_key"))
+        return not company_key or "未识别企业" in company_name or "未识别企业" in company_key
+
+    def _normalize_employment_value(self, field: str, value: Any) -> str:
+        text = _to_text(value)
+        if field == "经营状态":
+            parts = [p for p in re.split(r"[\s,，、/|]+", text) if p]
+            return "，".join(dict.fromkeys(parts))
+        if field == "持股比例":
+            return text.replace("％", "%")
+        return text
+
+    def _employment_field_diff_type(self, field: str) -> str:
+        return {
+            "企业名称": "company_name_changed",
+            "经营状态": "company_status_changed",
+            "承担职务": "company_role_changed",
+            "持股比例": "company_share_changed",
+        }.get(field, "company_field_changed")
+
+    def _employment_field_severity(self, field: str) -> str:
+        return "high" if field in {"企业名称", "经营状态", "持股比例"} else "medium"
 
     def _load_task_records(self, task_dir: Path) -> List[Dict[str, Any]]:
         raw_records = _read_json(task_dir / "raw_4way_flat.json", None)

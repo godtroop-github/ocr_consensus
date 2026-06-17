@@ -830,7 +830,7 @@ Excel 导出默认设计：
 
 ## 24. 当前实施切片
 
-第一阶段先推进到可测试点：完成基线存储、保存 API 和基础页面入口。
+第一阶段先推进到可测试点：完成基线存储、保存 API、基线详情展示和任务结果对基线的即时比对。
 
 范围：
 
@@ -842,13 +842,15 @@ Excel 导出默认设计：
 6. 结果列表页支持在人工复核后保存 snapshot 基线。
 7. 保存基线时携带浏览器端人工复核状态，用于落库记录 `passed / failed / unreviewed`。
 8. 基线管理页支持查看基线列表和基线详情。
+9. 基线管理页将“基线详情”和“基线比对”分区展示：详情区只看该基线自身数据，比对区只看当前任务与基线的差异。
+10. 比对结果覆盖基础信息字段和任职明细字段。
 
 暂不包含：
 
-1. 任职明细 diff。
-2. 差异列表 UI。
-3. Excel 导出。
-4. candidate/golden 生成闭环。
+1. 比对结果持久化。
+2. Excel 导出。
+3. candidate/golden 生成闭环。
+4. 基线版本之间直接比对。
 
 当前可测试接口：
 
@@ -867,13 +869,53 @@ POST /api/compare
 /baselines              基线管理页，查看基线列表、详情，并执行基础字段比对
 ```
 
-当前基础比对能力：
+### 24.1 当前字段级比对规则
+
+#### 基础信息逐字段比对
+
+| 字段 | 当前处理 | 差异类型 | 风险 |
+| --- | --- | --- | --- |
+| 姓名 | 归一化为空白后直接比较 | field_changed / field_missing_current / field_filled | medium |
+| 身份证号 | 脱敏号直接比较 | field_changed / field_missing_current / field_filled | high |
+| 相关企业 | 提取数字后比较 | field_changed / field_missing_current / field_filled | medium |
+| 任职 | 提取数字后比较 | field_changed / field_missing_current / field_filled | medium |
+| 参股 | 提取数字后比较 | field_changed / field_missing_current / field_filled | medium |
+| 截图日期 | 与截图时间合并为采集时间弱差异 | same / newer / older / missing_current / filled / invalid / changed | older 或 invalid 为 medium |
+| 截图时间 | 与截图日期合并为采集时间弱差异 | same / newer / older / missing_current / filled / invalid / changed | older 或 invalid 为 medium |
+
+说明：
+
+1. 基础业务字段任一变化，`business_diff_status = changed`。
+2. 仅截图时间变化，不计入基础业务字段变化。
+3. 当前截图时间早于基线，标记为疑似旧截图并进入复核。
+4. 身份证号变化始终按高风险处理。
+
+#### 任职明细逐字段比对
+
+| 字段 | 当前处理 | 差异类型 | 风险 |
+| --- | --- | --- | --- |
+| 企业名称 | 企业名称归一化 key 匹配后比较展示值 | company_name_changed / company_added / company_missing | high |
+| 经营状态 | 多状态按分隔符归一化后比较 | company_status_changed / company_added / company_missing | high |
+| 承担职务 | 直接比较 | company_role_changed / company_added / company_missing | medium |
+| 持股比例 | 统一 `% / ％` 后比较 | company_share_changed / company_added / company_missing | high |
+
+任职明细行匹配规则：
+
+1. 优先按 `企业名称归一化 key` 精确匹配。
+2. `未识别企业`、空企业 key 视为占位企业，不与真实企业强匹配。
+3. 占位企业只允许同一人员下相同行序占位匹配，匹配后仍保留弱证据属性。
+4. 基线有企业行而本次没有，生成 `company_missing`，四个字段分别给出基线值到空值的差异。
+5. 本次有企业行而基线没有，生成 `company_added`，四个字段分别给出空值到本次值的差异。
+6. 任职明细任一字段变化，记录级 `business_diff_status = changed`，并计入 `employment_changed_records`。
+
+### 24.2 当前比对能力
 
 1. 支持当前任务与指定 baseline 做即时比对。
 2. 记录匹配优先级：`record_key`、`文件编号+姓名`、`身份证号+姓名`、`文件编号`。
-3. 业务字段先覆盖：姓名、身份证号、相关企业、任职、参股。
+3. 业务字段覆盖：姓名、身份证号、相关企业、任职、参股。
 4. 截图日期时间作为采集时间弱差异，不默认进入主业务差异。
-5. 输出记录级 summary、字段级 diff、严重等级和是否需要复核。
+5. 任职明细覆盖：企业名称、经营状态、承担职务、持股比例。
+6. 输出记录级 summary、基础字段 diff、任职明细 diff、严重等级和是否需要复核。
 
 当前比对 API 示例：
 
@@ -892,13 +934,15 @@ curl -X POST http://127.0.0.1:8090/api/compare \
 5. 页面展示变化构成条和风险分布。
 6. 页面支持按全部、需复核、业务变化、新增、缺失、疑似旧截图、仅时间变化快速切片。
 7. 页面支持搜索、业务状态、采集时间状态、风险等级、只看需复核等精细筛选。
-8. 页面展示重点差异记录，包含编号、姓名、身份证号、截图时间、业务状态、采集时间状态、风险和字段差异。
-9. 字段差异采用“基线值 -> 本次值”的左右对照卡片展示，便于人工稽核。
-10. 每条差异支持展开“基线记录 / 本次记录”详情，展示记录键、文件编号、文件名、姓名、身份证号、截图时间、企/任/参、复核状态等字段。
+8. 页面支持按任职变化快速切片。
+9. 页面展示重点差异记录，包含编号、姓名、身份证号、截图时间、业务状态、采集时间状态、风险和字段差异。
+10. 基础字段差异采用“基线值 -> 本次值”的左右对照卡片展示，便于人工稽核。
+11. 任职明细差异按企业、字段、基线值、本次值、类型、风险展开展示。
+12. 每条差异支持展开“基线记录 / 本次记录”详情，展示记录键、文件编号、文件名、姓名、身份证号、截图时间、企/任/参、复核状态等字段。
 
 限制：
 
-1. 当前页面只展示基础字段差异。
-2. 当前比对结果不持久化。
-3. 当前不包含 Excel 导出。
-4. 当前不包含任职企业明细 diff。
+1. 当前比对结果不持久化。
+2. 当前不包含 Excel 导出。
+3. 当前不包含 candidate/golden 生成闭环。
+4. 当前任职明细企业匹配只使用确定性归一化 key 和占位行序，不做模糊企业名合并。
