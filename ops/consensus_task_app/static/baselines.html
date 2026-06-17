@@ -1256,17 +1256,48 @@
       return ["changed", "new", "missing"].includes(row.business_diff_status);
     }
 
+    function employmentDecisionGroups(row) {
+      const groups = {};
+      for (const diff of row.employment_diffs || []) {
+        const b = diff.baseline_row || {};
+        const c = diff.current_row || {};
+        const companyKey = c.company_key || b.company_key || c.company_name || b.company_name || "未识别企业";
+        if (["company_added", "company_missing"].includes(diff.diff_type)) {
+          groups[`company:${diff.diff_type}:${companyKey}`] = true;
+        } else {
+          groups[`field:${companyKey}:${diff.field_name || ""}`] = true;
+        }
+      }
+      return Object.keys(groups);
+    }
+
+    function rowDecisionRequiredCount(row) {
+      if (["new", "missing"].includes(row.business_diff_status)) return 1;
+      return (row.field_diffs || []).filter((d) => d.section !== "employment").length + employmentDecisionGroups(row).length;
+    }
+
+    function rowDecisionResolvedCount(row, decision) {
+      const required = rowDecisionRequiredCount(row);
+      if (!required || !decision) return 0;
+      if (["keep_baseline", "accept_current", "manual", "remove"].includes(decision.action || "")) return required;
+      if (decision.action !== "field_decisions") return 0;
+      const basic = decision.basic && typeof decision.basic === "object" ? Object.keys(decision.basic).length : 0;
+      const employment = decision.employment && typeof decision.employment === "object" ? Object.keys(decision.employment).length : 0;
+      const employmentCompanies = decision.employment_companies && typeof decision.employment_companies === "object" ? Object.keys(decision.employment_companies).length : 0;
+      return Math.min(required, basic + employment + employmentCompanies);
+    }
+
     function decisionLabel(decision) {
       const action = decision && decision.action;
-      const map = { keep_baseline: "保留", accept_current: "采用", manual: "修正", remove: "移除" };
+      const map = { keep_baseline: "保留", accept_current: "采用", manual: "修正", remove: "移除", field_decisions: "字段" };
       return map[action] || "";
     }
 
     function renderDecisionBar(data, rows) {
       const decisions = readCompareDecisions(data);
-      const required = rows.filter(rowNeedsDecision);
-      const decided = required.filter((row) => decisions[String(row._compare_idx)]).length;
-      const disabled = required.length === 0 || decided < required.length;
+      const required = rows.reduce((sum, row) => sum + rowDecisionRequiredCount(row), 0);
+      const decided = rows.reduce((sum, row) => sum + rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]), 0);
+      const disabled = required === 0 || decided < required;
       return `
         <div class="decision-bar">
           <div>
@@ -1276,7 +1307,7 @@
             </div>
           </div>
           <div class="stats">
-            <span class="decision-chip ${required.length ? "need" : "done"}">待裁决 ${decided}/${required.length}</span>
+            <span class="decision-chip ${required ? "need" : "done"}">待裁决 ${decided}/${required}</span>
             <button class="btn" id="submitBaselineUpdate" type="button" ${disabled ? "disabled" : ""}>提交基线更新</button>
           </div>
         </div>
@@ -1810,20 +1841,20 @@
 
     async function submitBaselineUpdate(data) {
       const rows = prepareCompareRows(data.records || []);
-      const required = rows.filter(rowNeedsDecision);
       const decisions = readCompareDecisions(data);
-      const missing = required.filter((row) => !decisions[String(row._compare_idx)]);
-      if (!required.length) {
+      const requiredCount = rows.reduce((sum, row) => sum + rowDecisionRequiredCount(row), 0);
+      const decidedCount = rows.reduce((sum, row) => sum + rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]), 0);
+      if (!requiredCount) {
         alert("本次比对没有需要人工裁决的业务差异，无需生成新的业务基线版本。");
         return;
       }
-      if (missing.length) {
-        alert(`还有 ${missing.length} 条业务差异未裁决，请先进入详情页处理。`);
+      if (decidedCount < requiredCount) {
+        alert(`还有 ${requiredCount - decidedCount} 个字段/企业项未裁决，请先进入详情页处理。`);
         return;
       }
       const reason = window.prompt("确认提交全部裁决并生成新的 active golden 基线？可输入备注：", "批量裁决更新真实基线");
       if (reason === null) return;
-      const payloadDecisions = required.map((row) => ({
+      const payloadDecisions = rows.filter((row) => rowDecisionRequiredCount(row) > 0).map((row) => ({
         ...(decisions[String(row._compare_idx)] || {}),
         idx: Number(row._compare_idx),
       }));

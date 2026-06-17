@@ -134,6 +134,9 @@
     .decision-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .decision-textarea { width: 100%; min-height: 92px; resize: vertical; border: 1px solid var(--line); border-radius: 14px; background: #FFFDF8; color: var(--text); padding: 10px 12px; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; outline: none; }
     .decision-status { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .decision-table-wrap { max-height: 300px; overflow: auto; border: 1px solid var(--line-soft); border-radius: 14px; background: #fff; }
+    .decision-select, .decision-input { width: 100%; border: 1px solid var(--line); border-radius: 999px; background: #FFFDF8; color: var(--text); padding: 7px 9px; font: inherit; font-size: 12px; outline: none; }
+    .decision-input { border-radius: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     @media (max-width: 1120px) {
       .layout { grid-template-columns: 1fr; }
       .image-rail { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -463,11 +466,128 @@
         "参股": source.shareholding_count || "",
       };
     }
+    function businessDecisionItems() {
+      if (row.match_status !== "matched") return [];
+      const b = rec("baseline");
+      const c = rec("current");
+      return [
+        ["姓名", "person_name", b.person_name, c.person_name],
+        ["身份证号", "masked_id", b.masked_id, c.masked_id],
+        ["相关企业", "related_count", b.related_count, c.related_count],
+        ["任职", "employment_count", b.employment_count, c.employment_count],
+        ["参股", "shareholding_count", b.shareholding_count, c.shareholding_count],
+      ].filter(([, , bv, cv]) => String(bv || "") !== String(cv || ""));
+    }
+    function employmentDecisionItems() {
+      if (row.match_status !== "matched") return [];
+      const items = [];
+      alignEmployment().forEach((pair, pairIndex) => {
+        const b = pair.baseline || {};
+        const c = pair.current || {};
+        if (!pair.baseline || !pair.current) {
+          items.push({
+            kind: "employment_company",
+            key: String(pairIndex),
+            label: pair.baseline ? "企业减少" : "企业新增",
+            baseline: b.company_name || "—",
+            current: c.company_name || "—",
+          });
+          return;
+        }
+        [
+          ["企业名称", "company_name", b.company_name, c.company_name],
+          ["经营状态", "business_status", b.business_status, c.business_status],
+          ["承担职务", "role", b.role, c.role],
+          ["持股比例", "share_ratio", b.share_ratio, c.share_ratio],
+        ].forEach(([label, key, bv, cv]) => {
+          if (String(bv || "") !== String(cv || "")) {
+            items.push({
+              kind: "employment_field",
+              key: `${pairIndex}:${label}`,
+              label: `${c.company_name || b.company_name || "未识别企业"} / ${label}`,
+              baseline: bv || "—",
+              current: cv || "—",
+            });
+          }
+        });
+      });
+      return items;
+    }
+    function decisionOptions(selected = "") {
+      return [
+        ["", "请选择"],
+        ["keep_baseline", "保留基线"],
+        ["accept_current", "采用本次"],
+        ["manual", "手工修正"],
+      ].map(([value, label]) => `<option value="${esc(value)}" ${selected === value ? "selected" : ""}>${esc(label)}</option>`).join("");
+    }
+    function companyDecisionOptions(selected = "") {
+      return [
+        ["", "请选择"],
+        ["keep_baseline", "保留基线"],
+        ["accept_current", "采用本次"],
+      ].map(([value, label]) => `<option value="${esc(value)}" ${selected === value ? "selected" : ""}>${esc(label)}</option>`).join("");
+    }
+    function renderFieldDecisionRows(existing) {
+      const basic = existing && existing.basic && typeof existing.basic === "object" ? existing.basic : {};
+      const employment = existing && existing.employment && typeof existing.employment === "object" ? existing.employment : {};
+      const employmentCompanies = existing && existing.employment_companies && typeof existing.employment_companies === "object" ? existing.employment_companies : {};
+      const rows = [];
+      for (const [label, key, bv, cv] of businessDecisionItems()) {
+        const saved = basic[label] || {};
+        rows.push(`
+          <tr>
+            <td>基础 / ${esc(label)}</td>
+            <td>${esc(bv || "—")}</td>
+            <td>${esc(cv || "—")}</td>
+            <td><select class="decision-select" data-decision-kind="basic" data-decision-key="${esc(label)}">${decisionOptions(saved.action || "")}</select></td>
+            <td><input class="decision-input" data-decision-manual="basic:${esc(label)}" value="${esc(saved.value || "")}" placeholder="手工值" /></td>
+          </tr>
+        `);
+      }
+      for (const item of employmentDecisionItems()) {
+        const bucket = item.kind === "employment_company" ? employmentCompanies : employment;
+        const saved = bucket[item.key] || {};
+        rows.push(`
+          <tr>
+            <td>${esc(item.kind === "employment_company" ? item.label : `任职 / ${item.label}`)}</td>
+            <td>${esc(item.baseline || "—")}</td>
+            <td>${esc(item.current || "—")}</td>
+            <td><select class="decision-select" data-decision-kind="${esc(item.kind)}" data-decision-key="${esc(item.key)}">${item.kind === "employment_company" ? companyDecisionOptions(saved.action || "") : decisionOptions(saved.action || "")}</select></td>
+            <td>${item.kind === "employment_company" ? `<span class="muted">—</span>` : `<input class="decision-input" data-decision-manual="${esc(item.kind)}:${esc(item.key)}" value="${esc(saved.value || "")}" placeholder="手工值" />`}</td>
+          </tr>
+        `);
+      }
+      if (!rows.length) return `<div class="empty" style="padding:22px;">没有需要裁决的业务字段。</div>`;
+      return `
+        <div class="decision-table-wrap">
+          <table>
+            <thead><tr><th>字段/企业项</th><th>基线</th><th>本次</th><th>裁决</th><th>手工值</th></tr></thead>
+            <tbody>${rows.join("")}</tbody>
+          </table>
+        </div>
+      `;
+    }
     function decisionSection() {
       const seed = esc(JSON.stringify(manualFieldsSeed(), null, 2));
       const currentDisabled = row.match_status === "unmatched_missing" ? "" : "";
       const existing = readCompareDecisions()[String(idx)];
-      const existingText = existing ? `当前已选择：${existing.action === "accept_current" ? "采用本次" : existing.action === "manual" ? "手工修正" : "保留基线"}` : "当前尚未裁决。";
+      const existingText = existing ? `当前已选择：${existing.action === "accept_current" ? "采用本次" : existing.action === "manual" ? "手工修正" : existing.action === "field_decisions" ? "字段裁决" : "保留基线"}` : "当前尚未裁决。";
+      if (row.match_status === "matched") {
+        return `
+          <section class="panel">
+            <h2>字段级裁决</h2>
+            <div class="decision-panel">
+              <div class="decision-status">${existing ? "当前记录已有字段裁决，可继续修改。" : "只需要处理不一致的业务字段；一致字段会自动沿用基线。"}</div>
+              ${renderFieldDecisionRows(existing || {})}
+              <div class="decision-actions">
+                <button class="btn" type="button" data-save-field-decisions>保存字段裁决</button>
+              </div>
+              <div id="decisionStatus" class="decision-status">保存后返回比对列表；全部待裁决字段完成后，在列表页统一提交基线更新。</div>
+            </div>
+          </section>
+        `;
+      }
       return `
         <section class="panel">
           <h2>基线裁决</h2>
@@ -486,6 +606,37 @@
           </div>
         </section>
       `;
+    }
+    function collectFieldDecisions() {
+      const basic = {};
+      const employment = {};
+      const employmentCompanies = {};
+      const selects = [...document.querySelectorAll("[data-decision-kind]")];
+      for (const select of selects) {
+        const kind = select.dataset.decisionKind;
+        const key = select.dataset.decisionKey;
+        const action = select.value;
+        if (!action) throw new Error("还有字段未选择裁决方式。");
+        const manualInput = document.querySelector(`[data-decision-manual="${CSS.escape(kind)}:${CSS.escape(key)}"]`);
+        const value = manualInput ? manualInput.value : "";
+        if (action === "manual" && !String(value || "").trim()) throw new Error("手工修正字段必须填写手工值。");
+        const item = { action, value };
+        if (kind === "basic") basic[key] = item;
+        else if (kind === "employment_field") employment[key] = item;
+        else if (kind === "employment_company") employmentCompanies[key] = item;
+      }
+      return { basic, employment, employment_companies: employmentCompanies };
+    }
+    function saveFieldDecisions() {
+      const status = $("decisionStatus");
+      try {
+        const payload = collectFieldDecisions();
+        writeCompareDecision({ idx, action: "field_decisions", ...payload, decided_at: new Date().toISOString() });
+        status.textContent = "字段裁决已保存，正在返回列表。";
+        location.href = backHref();
+      } catch (err) {
+        status.textContent = err.message || String(err);
+      }
     }
     async function applyBaselineDecision(action) {
       const status = $("decisionStatus");
@@ -550,6 +701,7 @@
         img.classList.toggle("zoomed", imageZoomed[side]);
       });
       document.querySelectorAll("[data-baseline-decision]").forEach(btn => btn.onclick = () => applyBaselineDecision(btn.dataset.baselineDecision));
+      document.querySelectorAll("[data-save-field-decisions]").forEach(btn => btn.onclick = saveFieldDecisions);
     }
     async function load() {
       if (!baselineId || !taskId) { $("app").innerHTML = `<div class="empty">缺少 baseline_id 或 task_id。</div>`; return; }

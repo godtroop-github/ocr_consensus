@@ -617,6 +617,12 @@ class BaselineStore:
                 if action in {"accept_current", "remove"}:
                     return None, [], "remove_missing"
                 return dict(diff.get("baseline") or {}), list(diff.get("baseline_employment") or []), action or "keep_baseline"
+            if action == "field_decisions":
+                return (
+                    self._merge_record_by_field_decisions(diff, decision),
+                    self._merge_employment_by_field_decisions(diff, decision),
+                    action,
+                )
             if action in {"accept_current", "manual"}:
                 return dict(diff.get("current") or {}), list(diff.get("current_employment") or []), action
             return dict(diff.get("baseline") or {}), list(diff.get("baseline_employment") or []), action or "keep_baseline"
@@ -821,6 +827,93 @@ class BaselineStore:
         for key, target in mapping.items():
             if key in fields:
                 record[target] = _to_text(fields.get(key))
+
+    def _decision_pick_value(self, baseline_value: Any, current_value: Any, decision: Dict[str, Any]) -> str:
+        action = _to_text(decision.get("action"))
+        if action == "accept_current":
+            return _to_text(current_value)
+        if action == "manual":
+            return _to_text(decision.get("value"))
+        return _to_text(baseline_value)
+
+    def _merge_record_by_field_decisions(self, diff: Dict[str, Any], decision: Dict[str, Any]) -> Dict[str, Any]:
+        baseline = dict(diff.get("baseline") or {})
+        current = dict(diff.get("current") or {})
+        record = dict(baseline or current)
+        basic = decision.get("basic") if isinstance(decision.get("basic"), dict) else {}
+        mapping = {
+            "姓名": "person_name",
+            "身份证号": "masked_id",
+            "相关企业": "related_count",
+            "任职": "employment_count",
+            "参股": "shareholding_count",
+        }
+        for label, key in mapping.items():
+            field_decision = basic.get(label)
+            if isinstance(field_decision, dict):
+                record[key] = self._decision_pick_value(baseline.get(key), current.get(key), field_decision)
+        return record
+
+    def _align_public_employment_pairs(
+        self,
+        baseline_rows: List[Dict[str, Any]],
+        current_rows: List[Dict[str, Any]],
+    ) -> List[Dict[str, Optional[Dict[str, Any]]]]:
+        used_current: set[int] = set()
+        pairs: List[Dict[str, Optional[Dict[str, Any]]]] = []
+        for baseline_row in baseline_rows:
+            current_idx = self._find_employment_match(baseline_row, current_rows, used_current)
+            if current_idx is None:
+                pairs.append({"baseline": baseline_row, "current": None})
+                continue
+            used_current.add(current_idx)
+            pairs.append({"baseline": baseline_row, "current": current_rows[current_idx]})
+        for idx, current_row in enumerate(current_rows):
+            if idx not in used_current:
+                pairs.append({"baseline": None, "current": current_row})
+        return pairs
+
+    def _merge_employment_by_field_decisions(self, diff: Dict[str, Any], decision: Dict[str, Any]) -> List[Dict[str, Any]]:
+        baseline_rows = list(diff.get("baseline_employment") or [])
+        current_rows = list(diff.get("current_employment") or [])
+        employment = decision.get("employment") if isinstance(decision.get("employment"), dict) else {}
+        employment_companies = (
+            decision.get("employment_companies")
+            if isinstance(decision.get("employment_companies"), dict)
+            else {}
+        )
+        field_mapping = {
+            "企业名称": "company_name",
+            "经营状态": "business_status",
+            "承担职务": "role",
+            "持股比例": "share_ratio",
+        }
+        merged: List[Dict[str, Any]] = []
+        for pair_index, pair in enumerate(self._align_public_employment_pairs(baseline_rows, current_rows)):
+            baseline = pair.get("baseline") or {}
+            current = pair.get("current") or {}
+            company_decision = employment_companies.get(str(pair_index))
+            if not baseline:
+                if isinstance(company_decision, dict) and company_decision.get("action") == "accept_current":
+                    merged.append(dict(current))
+                continue
+            if not current:
+                if isinstance(company_decision, dict) and company_decision.get("action") in {"accept_current", "remove"}:
+                    continue
+                merged.append(dict(baseline))
+                continue
+            row = dict(baseline)
+            source_from_current = False
+            for label, key in field_mapping.items():
+                field_decision = employment.get(f"{pair_index}:{label}")
+                if isinstance(field_decision, dict):
+                    row[key] = self._decision_pick_value(baseline.get(key), current.get(key), field_decision)
+                    if field_decision.get("action") == "accept_current":
+                        source_from_current = True
+            if source_from_current and current.get("source_image"):
+                row["source_image"] = current.get("source_image")
+            merged.append(row)
+        return merged
 
     def _fields_from_public_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
         return {
