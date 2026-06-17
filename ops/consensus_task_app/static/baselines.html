@@ -726,6 +726,7 @@
     let lastCompareData = null;
     let compareFilter = "review";
     let compareDetailFilters = { q: "", business: "", capture: "", severity: "", reviewOnly: false };
+    const COMPARE_STATE_KEY = "ocr_baseline_compare_state_v2";
 
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1105,6 +1106,67 @@
           `).join("")}
         </div>
       `;
+    }
+
+    function compareDataBaselineId(data) {
+      return String(compareBaseline.value || (data.baseline && data.baseline.id) || "");
+    }
+
+    function compareDataTaskId(data) {
+      return String(compareTask.value || (data.task && data.task.id) || "");
+    }
+
+    function compareStateMatches(state, baselineId, taskId) {
+      return !!(
+        state
+        && String(state.baseline_id || "") === String(baselineId || "")
+        && String(state.task_id || "") === String(taskId || "")
+        && state.compareData
+        && Array.isArray(state.compareData.records)
+      );
+    }
+
+    function saveCompareState(data, filteredRows) {
+      if (!data || !Array.isArray(data.records)) return;
+      const payload = {
+        baseline_id: compareDataBaselineId(data),
+        task_id: compareDataTaskId(data),
+        compareFilter,
+        compareDetailFilters: { ...compareDetailFilters },
+        filteredIndexes: (filteredRows || []).map((row) => Number(row._compare_idx)).filter((n) => Number.isFinite(n)),
+        compareData: data,
+        savedAt: Date.now(),
+      };
+      try {
+        sessionStorage.setItem(COMPARE_STATE_KEY, JSON.stringify(payload));
+      } catch (err) {
+        console.warn("compare state save skipped", err);
+      }
+    }
+
+    function readCompareState() {
+      try {
+        return JSON.parse(sessionStorage.getItem(COMPARE_STATE_KEY) || "null");
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function restoreCompareStateIfNeeded() {
+      const url = new URL(location.href);
+      if (url.searchParams.get("restore") !== "1") return false;
+      const state = readCompareState();
+      if (!compareStateMatches(state, state?.baseline_id, state?.task_id)) return false;
+      if (state.baseline_id && baselines.some((b) => String(b.id) === String(state.baseline_id))) {
+        compareBaseline.value = state.baseline_id;
+      }
+      if (state.task_id && tasks.some((t) => String(t.id) === String(state.task_id))) {
+        compareTask.value = state.task_id;
+      }
+      compareFilter = state.compareFilter || "review";
+      compareDetailFilters = state.compareDetailFilters || { q: "", business: "", capture: "", severity: "", reviewOnly: false };
+      renderCompareResult(state.compareData);
+      return true;
     }
 
     function renderCompareDetailFilters() {
@@ -1645,11 +1707,12 @@
       `;
     }
 
-    function compareDetailUrl(row, data) {
+    function compareDetailUrl(row, data, pos) {
       const params = new URLSearchParams({
         baseline_id: compareBaseline.value || (data.baseline && data.baseline.id) || "",
         task_id: compareTask.value || (data.task && data.task.id) || "",
         idx: String(row._compare_idx ?? ""),
+        pos: String(pos ?? ""),
       });
       return `/static/baseline_compare_detail.html?${params.toString()}`;
     }
@@ -1660,6 +1723,7 @@
       const rows = prepareCompareRows(data.records || []);
       const filteredRows = applyCompareDetailFilters(compareRowsByFilter(rows, compareFilter));
       const displayRows = filteredRows.slice(0, 800);
+      saveCompareState(data, filteredRows);
       compareResult.innerHTML = `
         ${renderCompareFilters(s)}
         ${renderCompareDetailFilters()}
@@ -1679,7 +1743,7 @@
               </tr>
             </thead>
             <tbody>
-              ${displayRows.length ? displayRows.map((row) => `
+              ${displayRows.length ? displayRows.map((row, pos) => `
                 <tr>
                   <td><span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span></td>
                   <td><span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span></td>
@@ -1689,7 +1753,7 @@
                   <td>${esc(recordCapture(row))}</td>
                   <td><div class="diff-chips">${renderBasicDiffChips(row)}</div></td>
                   <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
-                  <td class="right"><a class="btn" href="${esc(compareDetailUrl(row, data))}">详情</a></td>
+                  <td class="right"><a class="btn" href="${esc(compareDetailUrl(row, data, pos))}">详情</a></td>
                 </tr>
               `).join("") : `<tr><td colspan="9"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
             </tbody>
@@ -1802,6 +1866,7 @@
       if (targetId && baselines.some((b) => b.id === targetId)) {
         compareBaseline.value = targetId;
       }
+      restoreCompareStateIfNeeded();
     }
 
     compareBtn.addEventListener("click", startCompare);
