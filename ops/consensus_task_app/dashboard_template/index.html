@@ -53,6 +53,8 @@
     .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .home-link { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #c7d3ea; background: #fff; border-radius: 8px; padding: 7px 11px; color: #1f3b73; text-decoration: none; font-size: 13px; font-weight: 700; }
     .home-link:hover { background: #f8fbff; }
+    .baseline-action { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #c7d3ea; background: #fff; border-radius: 8px; padding: 7px 11px; color: #1f3b73; text-decoration: none; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .baseline-action:hover { background: #f8fbff; }
     .filter-summary, .filter-panel { display: none; }
     th.sort-filter-th { padding: 0; vertical-align: middle; }
     .th-wrap { display: flex; align-items: center; justify-content: flex-start; gap: 3px; padding: 8px 7px; min-height: 36px; }
@@ -314,6 +316,7 @@
     }
 
     .home-link,
+    .baseline-action,
     .btn,
     .pop-btn {
       border-radius: 999px;
@@ -324,6 +327,7 @@
     }
 
     .home-link:hover,
+    .baseline-action:hover,
     .btn:hover,
     .pop-btn:hover {
       background: var(--bg-soft);
@@ -490,7 +494,11 @@
         <h1>OCR 基础信息结构化结果（列表）</h1>
         <div class="small">支持筛选 / 排序 / 计数；点击文件名查看详情</div>
       </div>
-      <a class="home-link" href="/">返回处理台</a>
+      <div class="top-actions">
+        <button class="baseline-action" id="saveBaselineBtn" type="button">保存基线</button>
+        <a class="home-link" href="/baselines">基线管理</a>
+        <a class="home-link" href="/">返回处理台</a>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -1185,6 +1193,54 @@
       if (rowIsReviewed(r)) return '正常（复核）';
       if (rowIsReviewFailed(r)) return '复核不通过';
       return rowHasIssue(r) ? '待复核' : '正常';
+    }
+
+    function reviewSummaryForRows(baseRows) {
+      const summary = { total: 0, pending: 0, passed: 0, failed: 0, normal: 0 };
+      for (const r of baseRows || []) {
+        summary.total += 1;
+        if (rowIsReviewFailed(r)) summary.failed += 1;
+        else if (rowIsReviewed(r)) summary.passed += 1;
+        else if (rowHasIssue(r)) summary.pending += 1;
+        else summary.normal += 1;
+      }
+      return summary;
+    }
+
+    async function saveCurrentTaskBaseline() {
+      const task = DATA.task || {};
+      const taskId = toText(task.id);
+      if (!taskId) {
+        alert('当前列表缺少任务 ID，无法保存基线。');
+        return;
+      }
+      const baseRows = getActiveRows();
+      const summary = reviewSummaryForRows(baseRows);
+      if (summary.pending > 0 && !confirm(`仍有 ${summary.pending} 条待复核记录。是否仍保存为 snapshot 基线？`)) {
+        return;
+      }
+      const defaultName = `${task.name || taskId} · snapshot`;
+      const name = prompt('请输入基线名称', defaultName);
+      if (name === null) return;
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/baseline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim() || defaultName,
+          type: 'snapshot',
+          notes: `from result list; review total=${summary.total}, pending=${summary.pending}, passed=${summary.passed}, failed=${summary.failed}`,
+          review_state: getCurrentReviewMap(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || '保存基线失败');
+        return;
+      }
+      const baselineId = data.baseline && data.baseline.id;
+      if (confirm('基线已保存。是否打开基线管理页？')) {
+        location.href = baselineId ? `/baselines?id=${encodeURIComponent(baselineId)}` : '/baselines';
+      }
     }
 
     function getConflictCountForDisplay(r) {
@@ -1946,6 +2002,7 @@
     methodFilter.addEventListener('change', () => render(true));
     sortField.addEventListener('change', () => render(false));
     sortDirection.addEventListener('change', () => render(false));
+    document.getElementById('saveBaselineBtn').addEventListener('click', saveCurrentTaskBaseline);
     function clearAggregateFilterForManualFilter() {
       activeAggregateFilter = 'all';
     }

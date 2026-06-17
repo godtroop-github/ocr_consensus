@@ -2059,6 +2059,7 @@ async def save_task_as_baseline(task_id: str, payload: Optional[Dict[str, Any]] 
             baseline_type=str(payload.get("type") or "snapshot").strip() or "snapshot",
             notes=str(payload.get("notes") or "").strip(),
             created_by=str(payload.get("created_by") or "").strip(),
+            review_state=payload.get("review_state") if isinstance(payload.get("review_state"), dict) else {},
         )
     except BaselineError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

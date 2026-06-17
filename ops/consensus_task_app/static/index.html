@@ -418,9 +418,9 @@
     }
 
     .result-cell {
-      width: 138px;
-      min-width: 138px;
-      max-width: 138px;
+      width: 104px;
+      min-width: 104px;
+      max-width: 104px;
     }
 
     .actions {
@@ -737,12 +737,6 @@
       color: var(--red);
       background: #FFF8F6;
       border-color: #EAC8C1;
-    }
-
-    .icon-btn.baseline {
-      color: var(--blue);
-      background: var(--blue-soft);
-      border-color: #CFDAE4;
     }
 
     .icon-btn:disabled {
@@ -1149,28 +1143,6 @@
       await refresh();
     }
 
-    async function saveBaseline(id) {
-      const task = currentTasks.find((item) => item.id === id) || {};
-      const taskName = task.name || id;
-      const defaultName = `${taskName || id} · snapshot`;
-      const name = prompt("请输入基线名称", defaultName);
-      if (name === null) return;
-      const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/baseline`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() || defaultName, type: "snapshot" }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(data.detail || "保存基线失败");
-        return;
-      }
-      const baselineId = data.baseline && data.baseline.id;
-      if (confirm("基线已保存。是否打开基线管理页？")) {
-        location.href = baselineId ? `/baselines?id=${encodeURIComponent(baselineId)}` : "/baselines";
-      }
-    }
-
     function renderStats(tasks, queueSize) {
       const counts = tasks.reduce((acc, task) => {
         acc[task.status] = (acc[task.status] || 0) + 1;
@@ -1228,7 +1200,6 @@
                 <td class="result-cell">
                   <div class="actions icon-actions">
                     ${t.dashboard_url ? `<a class="icon-btn" href="${esc(t.dashboard_url)}" title="查看结果" aria-label="查看结果">↗</a>` : ""}
-                    ${t.status === "completed" ? `<button class="icon-btn baseline" title="保存基线" aria-label="保存基线" onclick="saveBaseline('${esc(t.id)}')">◇</button>` : ""}
                     ${["queued", "running"].includes(t.status) ? `<button class="icon-btn danger" title="停止" aria-label="停止" onclick="stopTask('${esc(t.id)}')">■</button>` : ""}
                     ${["stopped", "failed"].includes(t.status) ? `<button class="icon-btn" title="继续" aria-label="继续" onclick="resumeTask('${esc(t.id)}')">▶</button>` : ""}
                     <button class="icon-btn danger" title="删除" aria-label="删除" ${t.status === "running" ? "disabled" : ""} onclick="deleteTask('${esc(t.id)}')">×</button>

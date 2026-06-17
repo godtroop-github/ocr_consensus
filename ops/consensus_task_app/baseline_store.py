@@ -256,6 +256,7 @@ class BaselineStore:
         baseline_type: str = "snapshot",
         notes: str = "",
         created_by: str = "",
+        review_state: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         self.init_db()
         baseline_type = _to_text(baseline_type) or "snapshot"
@@ -287,6 +288,7 @@ class BaselineStore:
             "image_count": int(task.get("files_total") or len(task.get("input_files") or [])),
             "record_count": len(records),
             "strategy": "4ocr_weighted_consensus+harness",
+            "review_state_count": len(review_state or {}),
         }
 
         record_ids_by_person_key: Dict[str, str] = {}
@@ -303,6 +305,7 @@ class BaselineStore:
             record_key = _record_key(file_no, person_name, masked_id, filename)
             record_id = f"{baseline_id}_r{idx:06d}"
             person_key = f"{file_no}-{person_name}" if file_no and person_name else record_key
+            review_status = self._review_status_for_record(review_state or {}, rec, idx, file_no, person_name)
             record_ids_by_person_key[person_key] = record_id
             record_rows.append(
                 (
@@ -321,7 +324,7 @@ class BaselineStore:
                     _to_text(fields.get("相关企业") or rec.get("相关企业")),
                     _to_text(fields.get("任职") or rec.get("任职")),
                     _to_text(fields.get("参股") or rec.get("参股")),
-                    _to_text(rec.get("review_status")) or "unreviewed",
+                    review_status or _to_text(rec.get("review_status")) or "unreviewed",
                     _json_dumps(fields),
                     _json_dumps(self._record_evidence(rec)),
                 )
@@ -490,3 +493,32 @@ class BaselineStore:
         if any(value in {"占位", "证据补齐"} for value in statuses):
             return "证据补齐" if "证据补齐" in statuses else "占位"
         return "一致" if all(value == "一致" for value in statuses) else "|".join(sorted(set(statuses)))
+
+    def _review_status_for_record(
+        self,
+        review_state: Dict[str, Any],
+        rec: Dict[str, Any],
+        idx: int,
+        file_no: str,
+        person_name: str,
+    ) -> str:
+        candidates = [f"r:{idx - 1}"]
+        raw_idx = rec.get("idx")
+        if isinstance(raw_idx, int):
+            candidates.append(f"r:{raw_idx}")
+        if file_no and person_name:
+            candidates.append(f"g:{file_no}|||{person_name}")
+        for key in candidates:
+            if key not in review_state:
+                continue
+            entry = review_state.get(key)
+            if entry is True:
+                return "passed"
+            if isinstance(entry, dict):
+                status = _to_text(entry.get("status"))
+                if status in {"passed", "failed"}:
+                    return status
+                return "passed"
+            if _to_text(entry) in {"passed", "failed"}:
+                return _to_text(entry)
+        return "unreviewed"
