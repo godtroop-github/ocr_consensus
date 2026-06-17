@@ -232,7 +232,7 @@
     }
     .compare-filter-bar {
       display: grid;
-      grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(128px, .7fr)) auto auto auto;
+      grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(118px, .7fr)) auto auto auto;
       gap: 9px;
       align-items: center;
       margin: 0 0 14px;
@@ -736,6 +736,14 @@
       </div>
     </section>
 
+    <section class="card compact-baselines">
+      <div class="card-head">
+        <h2>真实基线版本</h2>
+        <div class="muted">保存后的基线会物理持久化在这里，可选为后续比对基准。</div>
+      </div>
+      <div id="list" class="table-wrap"><div class="empty">正在加载基线版本...</div></div>
+    </section>
+
   </div>
 
   <script>
@@ -751,7 +759,7 @@
     let tasks = [];
     let lastCompareData = null;
     let compareFilter = "review";
-    let compareDetailFilters = { q: "", business: "", capture: "", severity: "", reviewOnly: false };
+    let compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false };
     const COMPARE_STATE_KEY = "ocr_baseline_compare_state_v2";
     const COMPARE_DECISIONS_KEY = "ocr_baseline_compare_decisions_v1";
 
@@ -1234,7 +1242,7 @@
         compareTask.value = state.task_id;
       }
       compareFilter = state.compareFilter || "review";
-      compareDetailFilters = state.compareDetailFilters || { q: "", business: "", capture: "", severity: "", reviewOnly: false };
+      compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false, ...(state.compareDetailFilters || {}) };
       renderCompareResult(state.compareData);
       return true;
     }
@@ -1254,6 +1262,12 @@
           <select id="compareSeverityFilter">
             <option value="">风险等级</option>
             ${["info", "low", "medium", "high", "critical"].map((key) => `<option value="${key}" ${compareDetailFilters.severity === key ? "selected" : ""}>${esc(severityLabel(key))}</option>`).join("")}
+          </select>
+          <select id="compareDecisionFilter">
+            <option value="">裁决状态</option>
+            <option value="pending" ${compareDetailFilters.decision === "pending" ? "selected" : ""}>待裁决</option>
+            <option value="done" ${compareDetailFilters.decision === "done" ? "selected" : ""}>已裁决</option>
+            <option value="none" ${compareDetailFilters.decision === "none" ? "selected" : ""}>无需裁决</option>
           </select>
           <label class="check-pill"><input id="compareReviewOnly" type="checkbox" ${compareDetailFilters.reviewOnly ? "checked" : ""} /> 只看需复核</label>
           <button class="btn" id="compareApplyFilters" type="button">应用</button>
@@ -1485,6 +1499,14 @@
         if (compareDetailFilters.capture && row.capture_time_diff_status !== compareDetailFilters.capture) return false;
         if (compareDetailFilters.severity && row.severity !== compareDetailFilters.severity) return false;
         if (compareDetailFilters.reviewOnly && !row.requires_review) return false;
+        if (compareDetailFilters.decision) {
+          const decisions = lastCompareData ? readCompareDecisions(lastCompareData) : {};
+          const needs = rowNeedsDecision(row);
+          const done = !!decisions[String(row._compare_idx)];
+          if (compareDetailFilters.decision === "pending" && (!needs || done)) return false;
+          if (compareDetailFilters.decision === "done" && (!needs || !done)) return false;
+          if (compareDetailFilters.decision === "none" && needs) return false;
+        }
         if (q && !rowSearchText(row).includes(q)) return false;
         return true;
       });
@@ -1496,6 +1518,7 @@
         || compareDetailFilters.business
         || compareDetailFilters.capture
         || compareDetailFilters.severity
+        || compareDetailFilters.decision
         || compareDetailFilters.reviewOnly
       );
     }
@@ -2002,6 +2025,11 @@
         compareDetailFilters.severity = severity.value || "";
         renderCompareResult(lastCompareData);
       });
+      const decision = compareResult.querySelector("#compareDecisionFilter");
+      decision && decision.addEventListener("change", () => {
+        compareDetailFilters.decision = decision.value || "";
+        renderCompareResult(lastCompareData);
+      });
       const reviewOnly = compareResult.querySelector("#compareReviewOnly");
       reviewOnly && reviewOnly.addEventListener("change", () => {
         compareDetailFilters.reviewOnly = !!reviewOnly.checked;
@@ -2009,7 +2037,7 @@
       });
       const clear = compareResult.querySelector("#compareClearFilters");
       clear && clear.addEventListener("click", () => {
-        compareDetailFilters = { q: "", business: "", capture: "", severity: "", reviewOnly: false };
+        compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false };
         renderCompareResult(lastCompareData);
       });
     }
@@ -2033,7 +2061,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || "比对失败");
         compareFilter = "review";
-        compareDetailFilters = { q: "", business: "", capture: "", severity: "", reviewOnly: false };
+        compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false };
         renderCompareResult(data);
       } catch (err) {
         compareResult.innerHTML = `<div class="empty">${esc(err.message || String(err))}</div>`;
@@ -2072,6 +2100,7 @@
       if (targetId && baselines.some((b) => b.id === targetId)) {
         compareBaseline.value = targetId;
       }
+      renderList();
       restoreCompareStateIfNeeded();
     }
 
