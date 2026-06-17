@@ -222,6 +222,38 @@
       align-items: center;
       margin: 0 0 12px;
     }
+    .compare-filter-bar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(128px, .7fr)) auto auto auto;
+      gap: 9px;
+      align-items: center;
+      margin: 0 0 14px;
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 18px;
+      background: rgba(255,253,248,.82);
+    }
+    .compare-filter-bar input,
+    .compare-filter-bar select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--text);
+      padding: 8px 11px;
+      font: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+    .check-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
     .filter-pill {
       border: 1px solid var(--line);
       border-radius: 999px;
@@ -275,6 +307,61 @@
     .record-main strong { font-size: 14px; }
     .record-main span { color: var(--muted); font-size: 12px; }
     .compare-note { color: var(--muted); font-size: 12px; margin-top: 10px; line-height: 1.6; }
+    .record-detail-row td {
+      padding-top: 0;
+      background: rgba(255,253,248,.50);
+    }
+    .record-detail {
+      border: 1px dashed var(--line-soft);
+      border-radius: 16px;
+      background: rgba(255,253,248,.82);
+      padding: 8px 10px;
+    }
+    .record-detail summary {
+      cursor: pointer;
+      color: var(--green-strong);
+      font-weight: 850;
+      font-size: 12px;
+    }
+    .record-pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .record-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .record-card h4 {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(243,240,232,.52);
+      font-size: 13px;
+    }
+    .record-fields {
+      display: grid;
+      grid-template-columns: 102px 1fr;
+      gap: 0;
+      font-size: 12px;
+    }
+    .record-fields .k,
+    .record-fields .v {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .record-fields .k {
+      color: var(--muted);
+      background: #FFFDF8;
+    }
+    .record-fields .v {
+      color: var(--text);
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
     @media (max-width: 900px) {
       .wrap { width: min(100vw - 24px, 760px); }
       .topbar { display: block; }
@@ -283,6 +370,8 @@
       .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .compare-controls { grid-template-columns: 1fr; }
       .compare-viz { grid-template-columns: 1fr; }
+      .compare-filter-bar { grid-template-columns: 1fr; }
+      .record-pair { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -353,6 +442,7 @@
     let tasks = [];
     let lastCompareData = null;
     let compareFilter = "review";
+    let compareDetailFilters = { q: "", business: "", capture: "", severity: "", reviewOnly: false };
 
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -609,6 +699,29 @@
       `;
     }
 
+    function renderCompareDetailFilters() {
+      return `
+        <div class="compare-filter-bar">
+          <input id="compareSearch" type="text" value="${esc(compareDetailFilters.q)}" placeholder="搜索编号 / 姓名 / 身份证号 / 字段值，输入后回车" />
+          <select id="compareBusinessFilter">
+            <option value="">业务状态</option>
+            ${["same", "changed", "new", "missing"].map((key) => `<option value="${key}" ${compareDetailFilters.business === key ? "selected" : ""}>${esc(bizLabel(key))}</option>`).join("")}
+          </select>
+          <select id="compareCaptureFilter">
+            <option value="">采集时间</option>
+            ${["same", "newer", "older", "missing_current", "filled", "invalid", "changed", "missing"].map((key) => `<option value="${key}" ${compareDetailFilters.capture === key ? "selected" : ""}>${esc(captureLabel(key))}</option>`).join("")}
+          </select>
+          <select id="compareSeverityFilter">
+            <option value="">风险等级</option>
+            ${["info", "low", "medium", "high", "critical"].map((key) => `<option value="${key}" ${compareDetailFilters.severity === key ? "selected" : ""}>${esc(severityLabel(key))}</option>`).join("")}
+          </select>
+          <label class="check-pill"><input id="compareReviewOnly" type="checkbox" ${compareDetailFilters.reviewOnly ? "checked" : ""} /> 只看需复核</label>
+          <button class="btn" id="compareApplyFilters" type="button">应用</button>
+          <button class="btn" id="compareClearFilters" type="button">清空</button>
+        </div>
+      `;
+    }
+
     function compareFilterItems(s) {
       return [
         ["all", "全部", s.total_records],
@@ -668,13 +781,101 @@
       `;
     }
 
+    function recordCountsText(record) {
+      if (!record) return "—";
+      return `${record.related_count || "0"} / ${record.employment_count || "0"} / ${record.shareholding_count || "0"}`;
+    }
+
+    function renderRecordCard(title, record) {
+      if (!record) {
+        return `
+          <div class="record-card">
+            <h4>${esc(title)}</h4>
+            <div class="empty" style="padding:24px;">无记录</div>
+          </div>
+        `;
+      }
+      const capture = [record.capture_date, record.capture_time].filter(Boolean).join(" ") || "—";
+      const rows = [
+        ["记录键", record.record_key || "—"],
+        ["文件编号", record.file_id || "—"],
+        ["文件名", record.file_name || "—"],
+        ["姓名", record.person_name || "—"],
+        ["身份证号", record.masked_id || "—"],
+        ["截图时间", capture],
+        ["企/任/参", recordCountsText(record)],
+        ["复核状态", record.review_status || "—"],
+      ];
+      return `
+        <div class="record-card">
+          <h4>${esc(title)}</h4>
+          <div class="record-fields">
+            ${rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>`).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRecordDetail(row) {
+      return `
+        <details class="record-detail" ${row.requires_review ? "open" : ""}>
+          <summary>基线记录 / 本次记录详情</summary>
+          <div class="record-pair">
+            ${renderRecordCard("基线记录", row.baseline)}
+            ${renderRecordCard("本次记录", row.current)}
+          </div>
+        </details>
+      `;
+    }
+
+    function rowSearchText(row) {
+      const parts = [
+        row.record_key,
+        recordId(row),
+        recordName(row),
+        recordMaskedId(row),
+        recordCapture(row),
+      ];
+      for (const rec of [row.baseline, row.current]) {
+        if (!rec) continue;
+        parts.push(rec.file_name, rec.person_name, rec.masked_id, rec.related_count, rec.employment_count, rec.shareholding_count);
+      }
+      for (const diff of row.field_diffs || []) {
+        parts.push(diff.field_name, diff.baseline_value, diff.current_value, diff.diff_type);
+      }
+      return parts.map((x) => String(x || "").toLowerCase()).join(" ");
+    }
+
+    function applyCompareDetailFilters(rows) {
+      const q = (compareDetailFilters.q || "").trim().toLowerCase();
+      return rows.filter((row) => {
+        if (compareDetailFilters.business && row.business_diff_status !== compareDetailFilters.business) return false;
+        if (compareDetailFilters.capture && row.capture_time_diff_status !== compareDetailFilters.capture) return false;
+        if (compareDetailFilters.severity && row.severity !== compareDetailFilters.severity) return false;
+        if (compareDetailFilters.reviewOnly && !row.requires_review) return false;
+        if (q && !rowSearchText(row).includes(q)) return false;
+        return true;
+      });
+    }
+
+    function hasCompareDetailFilters() {
+      return !!(
+        (compareDetailFilters.q || "").trim()
+        || compareDetailFilters.business
+        || compareDetailFilters.capture
+        || compareDetailFilters.severity
+        || compareDetailFilters.reviewOnly
+      );
+    }
+
     function renderCompareResult(data) {
       lastCompareData = data;
       const s = data.summary || {};
       const rows = data.records || [];
-      const filteredRows = compareRowsByFilter(rows, compareFilter);
-      const focusRows = filteredRows.length ? filteredRows : rows.filter((r) => r.requires_review || r.business_diff_status !== "same" || r.capture_time_diff_status === "older");
-      const displayRows = (focusRows.length ? focusRows : rows).slice(0, 300);
+      const filteredRows = applyCompareDetailFilters(compareRowsByFilter(rows, compareFilter));
+      const filterActive = compareFilter !== "all" || hasCompareDetailFilters();
+      const focusRows = filterActive ? filteredRows : rows.filter((r) => r.requires_review || r.business_diff_status !== "same" || r.capture_time_diff_status === "older");
+      const displayRows = focusRows.slice(0, 300);
       compareResult.innerHTML = `
         <div class="compare-summary">
           <div class="metric accent"><div class="k">总记录</div><div class="v">${Number(s.total_records || 0)}</div><div class="hint">基线 ${Number(s.baseline_records || 0)} / 本次 ${Number(s.current_records || 0)}</div></div>
@@ -686,6 +887,7 @@
         </div>
         ${renderCompareViz(s)}
         ${renderCompareFilters(s)}
+        ${renderCompareDetailFilters()}
         <div class="scroll-box">
           <table>
             <thead>
@@ -701,7 +903,7 @@
               </tr>
             </thead>
             <tbody>
-              ${displayRows.map((row) => `
+              ${displayRows.length ? displayRows.map((row) => `
                 <tr>
                   <td><div class="record-main"><strong>${esc(recordId(row))}</strong><span>${esc(row.match_status || "")}</span></div></td>
                   <td><div class="record-main"><strong>${esc(recordName(row))}</strong><span>${esc(row.record_key || "")}</span></div></td>
@@ -712,7 +914,10 @@
                   <td><span class="diff-status ${esc(row.severity)}">${esc(severityLabel(row.severity))}</span></td>
                   <td>${renderFieldDiffs(row)}</td>
                 </tr>
-              `).join("")}
+                <tr class="record-detail-row">
+                  <td colspan="8">${renderRecordDetail(row)}</td>
+                </tr>
+              `).join("") : `<tr><td colspan="8"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
             </tbody>
           </table>
         </div>
@@ -727,6 +932,40 @@
           compareFilter = btn.dataset.compareFilter || "review";
           renderCompareResult(lastCompareData);
         });
+      });
+      const search = compareResult.querySelector("#compareSearch");
+      search && search.addEventListener("input", () => {
+        compareDetailFilters.q = search.value || "";
+      });
+      search && search.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") renderCompareResult(lastCompareData);
+      });
+      const apply = compareResult.querySelector("#compareApplyFilters");
+      apply && apply.addEventListener("click", () => renderCompareResult(lastCompareData));
+      const business = compareResult.querySelector("#compareBusinessFilter");
+      business && business.addEventListener("change", () => {
+        compareDetailFilters.business = business.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const capture = compareResult.querySelector("#compareCaptureFilter");
+      capture && capture.addEventListener("change", () => {
+        compareDetailFilters.capture = capture.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const severity = compareResult.querySelector("#compareSeverityFilter");
+      severity && severity.addEventListener("change", () => {
+        compareDetailFilters.severity = severity.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const reviewOnly = compareResult.querySelector("#compareReviewOnly");
+      reviewOnly && reviewOnly.addEventListener("change", () => {
+        compareDetailFilters.reviewOnly = !!reviewOnly.checked;
+        renderCompareResult(lastCompareData);
+      });
+      const clear = compareResult.querySelector("#compareClearFilters");
+      clear && clear.addEventListener("click", () => {
+        compareDetailFilters = { q: "", business: "", capture: "", severity: "", reviewOnly: false };
+        renderCompareResult(lastCompareData);
       });
     }
 
@@ -749,6 +988,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || "比对失败");
         compareFilter = "review";
+        compareDetailFilters = { q: "", business: "", capture: "", severity: "", reviewOnly: false };
         renderCompareResult(data);
       } catch (err) {
         compareResult.innerHTML = `<div class="empty">${esc(err.message || String(err))}</div>`;
