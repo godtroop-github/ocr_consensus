@@ -1312,12 +1312,17 @@
       `;
     }
 
-    function businessDecisionRequiredCount(row) {
-      if (["new", "missing"].includes(row.business_diff_status)) return 1;
-      return (row.business_diffs || []).filter((d) => {
+    function visibleBusinessDiffs(row) {
+      return (row.field_diffs || []).filter((d) => {
+        if (d.section === "employment") return false;
         const name = String(d.field_name || d.field || "");
         return !["截图日期", "截图时间", "截图时间一致", "capture_date", "capture_time"].includes(name);
-      }).length;
+      });
+    }
+
+    function businessDecisionRequiredCount(row) {
+      if (["new", "missing"].includes(row.business_diff_status)) return 1;
+      return visibleBusinessDiffs(row).length;
     }
 
     function employmentDecisionRequiredCount(row) {
@@ -1779,7 +1784,7 @@
     }
 
     function renderBasicDiffChips(row) {
-      const diffs = (row.field_diffs || []).filter((d) => d.section !== "employment");
+      const diffs = visibleBusinessDiffs(row);
       if (!diffs.length) return `<span class="diff-chip same">基础信息无变化</span>`;
       return diffs.slice(0, 6).map((d) => `
         <span class="diff-chip ${esc(chipClassBySeverity(d.severity || "medium"))}" title="${esc(d.baseline_value || "—")} -> ${esc(d.current_value || "—")}">
