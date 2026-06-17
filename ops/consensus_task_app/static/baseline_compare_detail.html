@@ -82,15 +82,11 @@
     .chip.ok { color: var(--ok); background: var(--success-bg); }
     .chip.warn { color: var(--warn); background: var(--warning-bg); }
     .chip.bad { color: var(--bad); background: var(--danger-bg); }
-    .layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(360px, .78fr); gap: 14px; align-items: start; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(520px, .96fr); gap: 14px; align-items: start; }
     .data-stack { display: grid; gap: 14px; min-width: 0; }
-    .image-rail { position: sticky; top: 76px; display: grid; gap: 12px; min-width: 0; }
+    .image-rail { position: sticky; top: 76px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
     .panel { border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,.94); overflow: hidden; box-shadow: var(--shadow); }
     .panel h2 { margin: 0; padding: 11px 14px; border-bottom: 1px solid var(--line-soft); background: rgba(243,240,232,.50); font-size: 14px; font-weight: 720; }
-    .review-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 12px; }
-    .summary-item { border: 1px solid var(--line-soft); border-radius: 14px; background: #fff; padding: 10px 11px; min-height: 66px; }
-    .summary-item .k { color: var(--muted); font-size: 11px; margin-bottom: 7px; }
-    .summary-item .v { font-weight: 850; overflow-wrap: anywhere; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { padding: 9px 11px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
     th { color: var(--muted); background: rgba(243,240,232,.55); font-size: 12px; font-weight: 820; white-space: nowrap; }
@@ -100,6 +96,10 @@
     .compare-cell.changed .box.base { background: #FFF8E9; border-color: #E9D9B8; }
     .compare-cell.changed .box.curr { background: #FFF1EE; border-color: #EAC8C1; }
     .compare-cell.same .box { background: #F4FAF6; border-color: #CFE3D6; }
+    .value-box { border: 1px solid var(--line-soft); border-radius: 10px; padding: 7px 8px; background: var(--paper); overflow-wrap: anywhere; min-height: 34px; font-weight: 760; }
+    .value-box.base { background: #FFF8E9; border-color: #E9D9B8; }
+    .value-box.curr { background: #F4FAF6; border-color: #CFE3D6; }
+    .value-box.changed { background: #FFF1EE; border-color: #EAC8C1; }
     .arr { color: var(--muted); display: grid; place-items: center; }
     .diff-status { display: inline-flex; align-items: center; border: 1px solid var(--line-soft); border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 820; white-space: nowrap; }
     .diff-status.same, .diff-status.ok { color: var(--ok); background: var(--success-bg); border-color: #CFE3D6; }
@@ -117,7 +117,7 @@
     .company-fields table { border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; background: #fff; }
     .image-panel { border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,.94); overflow: hidden; box-shadow: var(--shadow); }
     .image-panel h2 { margin: 0; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); background: rgba(243,240,232,.50); font-size: 13px; font-weight: 720; overflow-wrap: anywhere; }
-    .image-frame { height: min(34vh, 340px); min-height: 235px; display: grid; place-items: center; background: #F2EFE7; overflow: auto; }
+    .image-frame { height: min(32vh, 320px); min-height: 220px; display: grid; place-items: center; background: #F2EFE7; overflow: auto; }
     .image-frame img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in; }
     .image-frame img.zoomed { width: auto; height: auto; max-width: 100%; max-height: none; cursor: zoom-out; }
     .image-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line-soft); background: var(--paper); }
@@ -269,9 +269,30 @@
       const same = String(av) === String(bv);
       return `<div class="compare-cell ${same ? "same" : "changed"}"><div class="box base">${esc(av)}</div><div class="arr">→</div><div class="box curr">${esc(bv)}</div></div>`;
     }
-    function statusPill(a, b) {
+    function valueCell(value, side, changed = false) {
+      const v = value === undefined || value === null || value === "" ? "—" : value;
+      return `<div class="value-box ${esc(side)} ${changed ? "changed" : ""}">${esc(v)}</div>`;
+    }
+    function statusPill(a, b, kind = "") {
       const same = String(a || "") === String(b || "");
+      if (kind === "capture") {
+        return same
+          ? `<span class="diff-status changed">疑点</span>`
+          : `<span class="diff-status same">合理</span>`;
+      }
       return `<span class="diff-status ${same ? "same" : "changed"}">${same ? "一致" : "变化"}</span>`;
+    }
+    function compareRow(name, baselineValue, currentValue, kind = "") {
+      const same = String(baselineValue || "") === String(currentValue || "");
+      const capture = kind === "capture";
+      return `
+        <tr>
+          <td>${esc(name)}</td>
+          <td>${valueCell(baselineValue, "base", !same && !capture)}</td>
+          <td>${valueCell(currentValue, "curr", !same && !capture)}</td>
+          <td>${statusPill(baselineValue, currentValue, kind)}</td>
+        </tr>
+      `;
     }
     function summarySection() {
       const b = rec("baseline");
@@ -292,18 +313,18 @@
       if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") {
         const r = row.current || row.baseline || {};
         const title = row.match_status === "unmatched_new" ? "新增记录共识结果" : "减少记录基线结果";
-        const fields = [["姓名", r.person_name], ["身份证号", r.masked_id], ["截图时间", recordCapture(r)], ["企/任/参", countsText(r)], ["复核状态", r.review_status]];
+        const fields = [["姓名", r.person_name], ["身份证号", r.masked_id], ["截图时间", recordCapture(r)], ["企/任/参", countsText(r)]];
         return `<section class="panel"><h2>${title}</h2><table><tbody>${fields.map(([k, v]) => `<tr><th>${esc(k)}</th><td><strong>${esc(v || "—")}</strong></td></tr>`).join("")}</tbody></table><div class="note">新增或减少记录不再逐字段制造差异，直接按单侧记录复核。</div></section>`;
       }
       const b = rec("baseline");
       const c = rec("current");
-      const fields = [["姓名", b.person_name, c.person_name], ["身份证号", b.masked_id, c.masked_id], ["截图时间", recordCapture(b), recordCapture(c)], ["企/任/参", countsText(b), countsText(c)], ["复核状态", b.review_status, c.review_status]];
+      const fields = [["姓名", b.person_name, c.person_name, ""], ["身份证号", b.masked_id, c.masked_id, ""], ["截图时间", recordCapture(b), recordCapture(c), "capture"], ["企/任/参", countsText(b), countsText(c), ""]];
       return `
         <section class="panel">
           <h2>基础信息</h2>
           <table>
-            <thead><tr><th>字段</th><th>基线 → 本次</th><th>核验</th></tr></thead>
-            <tbody>${fields.map(([k, a, b]) => `<tr><td>${esc(k)}</td><td>${compareCell(a, b)}</td><td>${statusPill(a, b)}</td></tr>`).join("")}</tbody>
+            <thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead>
+            <tbody>${fields.map(([k, a, b, kind]) => compareRow(k, a, b, kind)).join("")}</tbody>
           </table>
         </section>
       `;
@@ -358,7 +379,7 @@
       const b = pair.baseline || {};
       const c = pair.current || {};
       const fields = [["企业名称", b.company_name, c.company_name], ["经营状态", b.business_status, c.business_status], ["承担职务", b.role, c.role], ["持股比例", b.share_ratio, c.share_ratio], ["来源图片", b.source_image, c.source_image]];
-      return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线 → 本次</th><th>核验</th></tr></thead><tbody>${fields.map(([k, a, b]) => `<tr><td>${esc(k)}</td><td>${compareCell(a, b)}</td><td>${statusPill(a, b)}</td></tr>`).join("")}</tbody></table></div>`;
+      return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead><tbody>${fields.map(([k, a, b]) => compareRow(k, a, b)).join("")}</tbody></table></div>`;
     }
     function employmentSection() {
       if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") return oneSideEmployment();
@@ -393,7 +414,6 @@
       $("app").innerHTML = `
         <div class="layout">
           <div class="data-stack">
-            ${summarySection()}
             ${basicSection()}
             ${employmentSection()}
           </div>
