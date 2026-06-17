@@ -141,7 +141,7 @@
     .right { text-align: right; }
     .compare-controls {
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.4fr) auto;
+      grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.4fr) auto auto;
       gap: 10px;
       align-items: end;
       padding: 18px 22px;
@@ -710,6 +710,7 @@
           <label for="compareTask">选择已完成任务</label>
           <select class="select" id="compareTask"></select>
         </div>
+        <button class="btn" id="swapCompareBtn" type="button">互换</button>
         <button class="btn" id="compareBtn" type="button">开始比对</button>
       </div>
       <div id="compareResult" class="compare-result">
@@ -726,6 +727,7 @@
     const compareBaseline = $("compareBaseline");
     const compareTask = $("compareTask");
     const compareBtn = $("compareBtn");
+    const swapCompareBtn = $("swapCompareBtn");
     const compareResult = $("compareResult");
     let baselines = [];
     let tasks = [];
@@ -822,6 +824,7 @@
         ? completed.map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)} · ${Number(t.records_total || 0)} 条</option>`).join("")
         : `<option value="">暂无已完成任务</option>`;
       compareBtn.disabled = !baselines.length || !completed.length;
+      swapCompareBtn.disabled = !baselines.length || !completed.length;
     }
 
     function selectBaselineForCompare(id) {
@@ -831,6 +834,40 @@
       history.replaceState(null, "", url);
       renderList();
       document.querySelector(".compare-controls").scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    function baselineBySourceTask(taskId) {
+      return baselines.find((b) => String(b.source_task_id || "") === String(taskId || ""));
+    }
+
+    function selectedBaseline() {
+      return baselines.find((b) => String(b.id || "") === String(compareBaseline.value || ""));
+    }
+
+    function swapCompareSources() {
+      const currentBaseline = selectedBaseline();
+      const currentTaskId = compareTask.value;
+      if (!currentBaseline || !currentTaskId) {
+        alert("请先选择基线和被比较任务。");
+        return;
+      }
+      const nextBaseline = baselineBySourceTask(currentTaskId);
+      const nextTaskId = currentBaseline.source_task_id || "";
+      if (!nextBaseline) {
+        alert("当前被比较任务尚未保存为基线，无法互换。请先在该任务结果页保存基线。");
+        return;
+      }
+      if (!nextTaskId || !tasks.some((t) => String(t.id || "") === String(nextTaskId))) {
+        alert("当前基线缺少可用的来源任务，无法互换。");
+        return;
+      }
+      compareBaseline.value = nextBaseline.id;
+      compareTask.value = nextTaskId;
+      const url = new URL(location.href);
+      url.searchParams.set("id", nextBaseline.id);
+      history.replaceState(null, "", url);
+      renderList();
+      startCompare();
     }
 
     function renderDetail(data) {
@@ -1762,6 +1799,7 @@
     }
 
     compareBtn.addEventListener("click", startCompare);
+    swapCompareBtn.addEventListener("click", swapCompareSources);
     compareBaseline.addEventListener("change", () => selectBaselineForCompare(compareBaseline.value));
     refresh();
   </script>

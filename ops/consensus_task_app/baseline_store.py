@@ -685,26 +685,78 @@ class BaselineStore:
         return grouped
 
     def _normalize_employment_row(self, row: Dict[str, Any], idx: int) -> Dict[str, Any]:
-        company_name = _to_text(row.get("company_name") or row.get("企业名称"))
+        evidence = row.get("evidence_summary") if isinstance(row.get("evidence_summary"), dict) else {}
+        company_name = self._employment_value(row, evidence, ["company_name", "企业名称", "公司名称"])
         company_key = _to_text(row.get("company_key")) or _normalize_company_key(company_name)
         row_index = row.get("row_index") or row.get("企业序号") or idx
         try:
             row_index_int = int(row_index)
         except Exception:
             row_index_int = idx
-        evidence = row.get("evidence_summary") if isinstance(row.get("evidence_summary"), dict) else row
         return {
             "id": _to_text(row.get("id")) or f"employment_{idx:06d}",
             "row_index": row_index_int,
             "company_key": company_key,
             "company_name": company_name,
-            "business_status": _to_text(row.get("business_status") or row.get("经营状态")),
-            "role": _to_text(row.get("role") or row.get("承担职务")),
-            "share_ratio": _to_text(row.get("share_ratio") or row.get("持股比例")),
-            "source_image": _to_text(row.get("source_image") or row.get("来源文件") or row.get("文件名")),
+            "business_status": self._employment_value(row, evidence, ["business_status", "经营状态"]),
+            "role": self._employment_value(row, evidence, ["role", "承担职务", "职务"]),
+            "share_ratio": self._employment_value(row, evidence, ["share_ratio", "持股比例", "持股"]),
+            "source_image": self._employment_value(row, evidence, ["source_image", "来源文件", "文件名"]),
             "row_status": _to_text(row.get("row_status")) or self._employment_row_status(row),
-            "evidence_summary": evidence,
+            "evidence_summary": evidence or row,
         }
+
+    def _employment_value(self, row: Dict[str, Any], evidence: Dict[str, Any], aliases: List[str]) -> str:
+        for source in [row, evidence]:
+            value = self._dict_value_by_alias(source, aliases, fuzzy=False)
+            if value:
+                return value
+        for source in [row, evidence]:
+            value = self._dict_value_by_alias(source, aliases, fuzzy=True)
+            if value:
+                return value
+        return ""
+
+    def _dict_value_by_alias(self, source: Dict[str, Any], aliases: List[str], fuzzy: bool = False) -> str:
+        if not isinstance(source, dict):
+            return ""
+        noise = ["置信", "confidence", "score", "来源模型", "证据", "支持"]
+        for key in aliases:
+            value = source.get(key)
+            text = self._scalar_text(value)
+            if text:
+                return text
+        for container_key in ["fields", "consensus", "weighted_consensus", "final", "values", "data"]:
+            container = source.get(container_key)
+            if not isinstance(container, dict):
+                continue
+            value = self._dict_value_by_alias(container, aliases, fuzzy=fuzzy)
+            if value:
+                return value
+        if not fuzzy:
+            return ""
+        for key, value in source.items():
+            key_text = _to_text(key)
+            if any(item in key_text for item in noise):
+                continue
+            if aliases and aliases[0] in {"company_name", "企业名称", "公司名称"} and "状态" in key_text:
+                continue
+            if aliases and any(alias in key_text for alias in aliases if len(alias) >= 2):
+                text = self._scalar_text(value)
+                if text:
+                    return text
+        return ""
+
+    def _scalar_text(self, value: Any) -> str:
+        if isinstance(value, dict):
+            for key in ["value", "text", "final", "consensus", "selected", "current_value", "baseline_value"]:
+                text = _to_text(value.get(key))
+                if text:
+                    return text
+            return ""
+        if isinstance(value, list):
+            return "，".join(_to_text(item) for item in value if _to_text(item))
+        return _to_text(value)
 
     def _match_keys(self, row: Dict[str, Any]) -> List[str]:
         keys: List[str] = []
@@ -1285,8 +1337,35 @@ class BaselineStore:
         payload = _read_js_var(task_dir / "dashboard" / "employment_data.js", "OCR_EMPLOYMENT", {})
         if not isinstance(payload, dict):
             payload = _read_js_var(task_dir / "employment_extraction" / "employment_data.js", "OCR_EMPLOYMENT", {})
-        rows = payload.get("person_rows") if isinstance(payload, dict) else []
-        return [r for r in rows if isinstance(r, dict)]
+        return self._extract_employment_rows(payload)
+
+    def _extract_employment_rows(self, payload: Any) -> List[Dict[str, Any]]:
+        if isinstance(payload, list):
+            return [row for row in payload if isinstance(row, dict)]
+        if not isinstance(payload, dict):
+            return []
+        for key in ["person_rows", "rows", "employment_rows", "company_rows", "details", "records"]:
+            rows = payload.get(key)
+            if isinstance(rows, list):
+                return [row for row in rows if isinstance(row, dict)]
+        rows: List[Dict[str, Any]] = []
+
+        def collect(value: Any) -> None:
+            if isinstance(value, list):
+                for item in value:
+                    collect(item)
+                return
+            if not isinstance(value, dict):
+                return
+            keys = "".join(str(key) for key in value.keys())
+            if any(token in keys for token in ["企业名称", "公司名称", "经营状态", "承担职务", "持股比例", "company_name"]):
+                rows.append(value)
+                return
+            for item in value.values():
+                collect(item)
+
+        collect(payload)
+        return rows
 
     def _record_file_name_value(self, rec: Dict[str, Any]) -> str:
         names: List[str] = []
