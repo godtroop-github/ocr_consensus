@@ -1111,8 +1111,18 @@
     }
 
     function compareRowsByFilter(rows, key) {
+      const decisions = readCompareDecisions(lastCompareData);
       if (key === "all") return rows;
       if (key === "review") return rows.filter((r) => r.requires_review);
+      if (key === "decision_pending") {
+        return rows.filter((r) => rowDecisionRequiredCount(r) > rowDecisionResolvedCount(r, decisions[String(r._compare_idx)]));
+      }
+      if (key === "decision_done") {
+        return rows.filter((r) => {
+          const required = rowDecisionRequiredCount(r);
+          return required > 0 && rowDecisionResolvedCount(r, decisions[String(r._compare_idx)]) >= required;
+        });
+      }
       if (key === "business") return rows.filter((r) => r.business_diff_status === "changed");
       if (key === "employment") return rows.filter((r) => (r.employment_diffs || []).length);
       if (key === "new") return rows.filter((r) => r.business_diff_status === "new");
@@ -1315,9 +1325,18 @@
     }
 
     function compareFilterItems(s) {
+      const rows = prepareCompareRows((lastCompareData && lastCompareData.records) || []);
+      const decisions = readCompareDecisions(lastCompareData);
+      const pendingDecisionCount = rows.filter((row) => rowDecisionRequiredCount(row) > rowDecisionResolvedCount(row, decisions[String(row._compare_idx)])).length;
+      const doneDecisionCount = rows.filter((row) => {
+        const required = rowDecisionRequiredCount(row);
+        return required > 0 && rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
+      }).length;
       return [
         ["all", "全部", s.total_records],
         ["review", "需复核", s.requires_review],
+        ["decision_pending", "待裁决", pendingDecisionCount],
+        ["decision_done", "已裁决", doneDecisionCount],
         ["business", "业务变化", s.business_changed_records],
         ["employment", "任职变化", s.employment_changed_records],
         ["new", "新增", s.new_records],

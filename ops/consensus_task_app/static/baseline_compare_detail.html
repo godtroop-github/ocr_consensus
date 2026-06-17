@@ -317,15 +317,36 @@
       }
       return `<span class="diff-status ${same ? "same" : "changed"}">${same ? "一致" : "变化"}</span>`;
     }
-    function compareRow(name, baselineValue, currentValue, kind = "") {
+    function currentDecision(kind, key) {
+      const existing = readCompareDecisions()[String(idx)] || {};
+      if (kind === "basic") return (existing.basic || {})[key] || {};
+      if (kind === "employment_field") return (existing.employment || {})[key] || {};
+      if (kind === "employment_company") return (existing.employment_companies || {})[key] || {};
+      return {};
+    }
+    function inlineDecisionControl(kind, key, allowManual = true) {
+      const saved = currentDecision(kind, key);
+      const options = kind === "employment_company" ? companyDecisionOptions(saved.action || "") : decisionOptions(saved.action || "");
+      return `
+        <div style="display:grid;gap:6px;min-width:130px;">
+          <select class="decision-select" data-decision-kind="${esc(kind)}" data-decision-key="${esc(key)}">${options}</select>
+          ${allowManual ? `<input class="decision-input" data-decision-manual="${esc(kind)}:${esc(key)}" value="${esc(saved.value || "")}" placeholder="手工值" />` : ""}
+        </div>
+      `;
+    }
+    function compareRow(name, baselineValue, currentValue, kind = "", decisionMeta = null) {
       const same = String(baselineValue || "") === String(currentValue || "");
       const capture = kind === "capture";
+      const decision = !same && !capture && decisionMeta
+        ? inlineDecisionControl(decisionMeta.kind, decisionMeta.key, decisionMeta.allowManual !== false)
+        : `<span class="muted">—</span>`;
       return `
         <tr>
           <td>${esc(name)}</td>
           <td>${valueCell(baselineValue, "base", !same && !capture)}</td>
           <td>${valueCell(currentValue, "curr", !same && !capture)}</td>
           <td>${statusPill(baselineValue, currentValue, kind)}</td>
+          <td>${decision}</td>
         </tr>
       `;
     }
@@ -358,8 +379,8 @@
         <section class="panel">
           <h2>基础信息</h2>
           <table>
-            <thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead>
-            <tbody>${fields.map(([k, a, b, kind]) => compareRow(k, a, b, kind)).join("")}</tbody>
+            <thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th><th>裁决</th></tr></thead>
+            <tbody>${fields.map(([k, a, b, kind]) => compareRow(k, a, b, kind, { kind: "basic", key: k })).join("")}</tbody>
           </table>
         </section>
       `;
@@ -433,11 +454,11 @@
         </section>
       `;
     }
-    function companyFieldCompare(pair) {
+    function companyFieldCompare(pair, pairIndex) {
       const b = pair.baseline || {};
       const c = pair.current || {};
       const fields = [["企业名称", b.company_name, c.company_name], ["经营状态", b.business_status, c.business_status], ["承担职务", b.role, c.role], ["持股比例", b.share_ratio, c.share_ratio]];
-      return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead><tbody>${fields.map(([k, a, b]) => compareRow(k, a, b)).join("")}</tbody></table></div>`;
+      return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th><th>裁决</th></tr></thead><tbody>${fields.map(([k, a, b]) => compareRow(k, a, b, "", { kind: "employment_field", key: `${pairIndex}:${k}` })).join("")}</tbody></table></div>`;
     }
     function employmentSection() {
       if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") return oneSideEmployment();
@@ -445,11 +466,15 @@
       return `
         <section class="panel employment-panel">
           <h2>任职明细</h2>
-          ${pairs.length ? `<div class="company-list">${pairs.map((p) => {
+          ${pairs.length ? `<div class="company-list">${pairs.map((p, pairIndex) => {
             const [label, cls] = companyStatus(p);
             const b = p.baseline || {};
             const c = p.current || {};
-            return `<details class="company" ${cls !== "ok" ? "open" : ""}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name || "—")}<small>${esc(companySub(b))}</small><div class="source-line">${sourceBadge(p.baseline, "baseline")}</div></div><div class="arr">→</div><div class="company-name">${esc(c.company_name || "—")}<small>${esc(companySub(c))}</small><div class="source-line">${sourceBadge(p.current, "current")}</div></div></div><span class="diff-status ${cls}">${esc(label)}</span></summary>${companyFieldCompare(p)}</details>`;
+            const companyDecision = (!p.baseline || !p.current)
+              ? `<div style="margin:0 12px 12px;">${inlineDecisionControl("employment_company", String(pairIndex), false)}</div>`
+              : "";
+            const fieldCompare = (!p.baseline || !p.current) ? "" : companyFieldCompare(p, pairIndex);
+            return `<details class="company" ${cls !== "ok" ? "open" : ""}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name || "—")}<small>${esc(companySub(b))}</small><div class="source-line">${sourceBadge(p.baseline, "baseline")}</div></div><div class="arr">→</div><div class="company-name">${esc(c.company_name || "—")}<small>${esc(companySub(c))}</small><div class="source-line">${sourceBadge(p.current, "current")}</div></div></div><span class="diff-status ${cls}">${esc(label)}</span></summary>${fieldCompare}${companyDecision}</details>`;
           }).join("")}</div>` : `<div class="empty">无任职企业明细。</div>`}
         </section>
       `;
@@ -578,9 +603,10 @@
           <section class="panel">
             <h2>字段级裁决</h2>
             <div class="decision-panel">
-              <div class="decision-status">${existing ? "当前记录已有字段裁决，可继续修改。" : "只需要处理不一致的业务字段；一致字段会自动沿用基线。"}</div>
-              ${renderFieldDecisionRows(existing || {})}
+              <div class="decision-status">${existing ? "当前记录已有字段裁决，可直接在上方差异行继续修改。" : "只需要处理上方不一致的业务字段；一致字段会自动沿用基线。"}</div>
               <div class="decision-actions">
+                <button class="btn" type="button" data-fill-field-decisions="keep_baseline">本条全部保留基线</button>
+                <button class="btn" type="button" data-fill-field-decisions="accept_current">本条全部采用本次</button>
                 <button class="btn" type="button" data-save-field-decisions>保存字段裁决</button>
               </div>
               <div id="decisionStatus" class="decision-status">保存后返回比对列表；全部待裁决字段完成后，在列表页统一提交基线更新。</div>
@@ -588,6 +614,8 @@
           </section>
         `;
       }
+      const keepText = row.match_status === "unmatched_new" ? "忽略新增" : "保留基线";
+      const acceptText = row.match_status === "unmatched_missing" ? "确认移除" : "接受全部进入基线";
       return `
         <section class="panel">
           <h2>基线裁决</h2>
@@ -597,8 +625,8 @@
               ${row.match_status === "unmatched_missing" ? "该记录在本次任务中缺失，采用本次表示从新基线中移除该记录。" : ""}
             </div>
             <div class="decision-actions">
-              <button class="btn" type="button" data-baseline-decision="keep_baseline">保留基线</button>
-              <button class="btn" type="button" data-baseline-decision="accept_current" ${currentDisabled}>采用本次</button>
+              <button class="btn" type="button" data-baseline-decision="keep_baseline">${esc(keepText)}</button>
+              <button class="btn" type="button" data-baseline-decision="accept_current" ${currentDisabled}>${esc(acceptText)}</button>
               <button class="btn" type="button" data-baseline-decision="manual">手工修正</button>
             </div>
             <textarea id="manualFields" class="decision-textarea" spellcheck="false">${seed}</textarea>
@@ -617,7 +645,8 @@
         const key = select.dataset.decisionKey;
         const action = select.value;
         if (!action) throw new Error("还有字段未选择裁决方式。");
-        const manualInput = document.querySelector(`[data-decision-manual="${CSS.escape(kind)}:${CSS.escape(key)}"]`);
+        const manualInput = [...document.querySelectorAll("[data-decision-manual]")]
+          .find((item) => item.dataset.decisionManual === `${kind}:${key}`);
         const value = manualInput ? manualInput.value : "";
         if (action === "manual" && !String(value || "").trim()) throw new Error("手工修正字段必须填写手工值。");
         const item = { action, value };
@@ -637,6 +666,13 @@
       } catch (err) {
         status.textContent = err.message || String(err);
       }
+    }
+    function fillFieldDecisions(action) {
+      document.querySelectorAll("[data-decision-kind]").forEach((select) => {
+        select.value = action;
+      });
+      const status = $("decisionStatus");
+      if (status) status.textContent = action === "accept_current" ? "已选择本条全部采用本次，确认后请保存字段裁决。" : "已选择本条全部保留基线，确认后请保存字段裁决。";
     }
     async function applyBaselineDecision(action) {
       const status = $("decisionStatus");
@@ -702,6 +738,7 @@
       });
       document.querySelectorAll("[data-baseline-decision]").forEach(btn => btn.onclick = () => applyBaselineDecision(btn.dataset.baselineDecision));
       document.querySelectorAll("[data-save-field-decisions]").forEach(btn => btn.onclick = saveFieldDecisions);
+      document.querySelectorAll("[data-fill-field-decisions]").forEach(btn => btn.onclick = () => fillFieldDecisions(btn.dataset.fillFieldDecisions));
     }
     async function load() {
       if (!baselineId || !taskId) { $("app").innerHTML = `<div class="empty">缺少 baseline_id 或 task_id。</div>`; return; }
