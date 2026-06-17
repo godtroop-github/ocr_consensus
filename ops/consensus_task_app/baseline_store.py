@@ -348,6 +348,8 @@ class BaselineStore:
                 "id": baseline.get("id"),
                 "name": baseline.get("name"),
                 "type": baseline.get("type"),
+                "source_task_id": baseline.get("source_task_id"),
+                "source_task_name": baseline.get("source_task_name"),
                 "created_at": baseline.get("created_at"),
                 "record_count": baseline.get("record_count"),
                 "image_count": baseline.get("image_count"),
@@ -724,8 +726,11 @@ class BaselineStore:
             "field_diffs": field_diffs,
             "employment_diffs": employment_diffs,
             "employment_summary": employment_diff["summary"],
+            "diff_summary": self._diff_summary(field_diffs, employment_diffs, capture_status),
             "baseline": self._public_record(baseline),
             "current": self._public_record(current),
+            "baseline_employment": [self._public_employment_row(row) for row in baseline_employment or []],
+            "current_employment": [self._public_employment_row(row) for row in current_employment or []],
         }
 
     def _new_record_diff(
@@ -754,8 +759,11 @@ class BaselineStore:
             ],
             "employment_diffs": employment_diffs,
             "employment_summary": self._employment_summary([], current_employment or [], 0, 0, len(current_employment or []), 0),
+            "diff_summary": ["新增记录"],
             "baseline": None,
             "current": self._public_record(current),
+            "baseline_employment": [],
+            "current_employment": [self._public_employment_row(row) for row in current_employment or []],
         }
 
     def _missing_record_diff(
@@ -784,8 +792,11 @@ class BaselineStore:
             ],
             "employment_diffs": employment_diffs,
             "employment_summary": self._employment_summary(baseline_employment or [], [], 0, 0, 0, len(baseline_employment or [])),
+            "diff_summary": ["基线记录缺失"],
             "baseline": self._public_record(baseline),
             "current": None,
+            "baseline_employment": [self._public_employment_row(row) for row in baseline_employment or []],
+            "current_employment": [],
         }
 
     def _capture_time_diff_status(self, baseline: Dict[str, Any], current: Dict[str, Any]) -> str:
@@ -1031,6 +1042,44 @@ class BaselineStore:
             "source_image": row.get("source_image"),
             "row_status": row.get("row_status"),
         }
+
+    def _diff_summary(
+        self,
+        field_diffs: List[Dict[str, Any]],
+        employment_diffs: List[Dict[str, Any]],
+        capture_status: str,
+    ) -> List[str]:
+        summary: List[str] = []
+        for diff in field_diffs[:4]:
+            field = _to_text(diff.get("field_name"))
+            baseline_value = _to_text(diff.get("baseline_value")) or "—"
+            current_value = _to_text(diff.get("current_value")) or "—"
+            if field:
+                summary.append(f"{field} {baseline_value} -> {current_value}")
+        if len(field_diffs) > 4:
+            summary.append(f"基础字段另有 {len(field_diffs) - 4} 项变化")
+
+        if employment_diffs:
+            by_type: Dict[str, int] = {}
+            for diff in employment_diffs:
+                diff_type = _to_text(diff.get("diff_type")) or "employment_changed"
+                by_type[diff_type] = by_type.get(diff_type, 0) + 1
+            type_label = {
+                "company_added": "新增企业字段",
+                "company_missing": "缺失企业字段",
+                "company_name_changed": "企业名称变化",
+                "company_status_changed": "经营状态变化",
+                "company_role_changed": "职务变化",
+                "company_share_changed": "持股比例变化",
+            }
+            for diff_type, count in list(by_type.items())[:4]:
+                summary.append(f"{type_label.get(diff_type, diff_type)} {count}")
+            if len(by_type) > 4:
+                summary.append(f"任职明细另有 {len(by_type) - 4} 类变化")
+
+        if not summary and capture_status not in {"same"}:
+            summary.append(f"采集时间 {capture_status}")
+        return summary
 
     def _is_placeholder_company(self, row: Dict[str, Any]) -> bool:
         company_name = _to_text(row.get("company_name"))
