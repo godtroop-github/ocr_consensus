@@ -131,12 +131,56 @@
     .field-table td:first-child { color: var(--muted); width: 128px; }
     .field-table td:last-child { font-weight: 750; }
     .right { text-align: right; }
+    .compare-controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.4fr) auto;
+      gap: 10px;
+      align-items: end;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(255,253,248,.58);
+    }
+    .control { display: grid; gap: 6px; }
+    .control label { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--text);
+      padding: 9px 12px;
+      font: inherit;
+      outline: none;
+    }
+    .compare-result { padding: 18px 22px 22px; }
+    .compare-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .diff-status {
+      display: inline-flex;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .diff-status.same { color: var(--green-strong); background: var(--green-soft); border-color: #CFE3D6; }
+    .diff-status.changed { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
+    .diff-status.new, .diff-status.missing, .diff-status.high, .diff-status.critical { color: var(--red); background: var(--red-soft); border-color: #EAC8C1; }
+    .diff-list { display: grid; gap: 4px; min-width: 180px; }
+    .diff-line { color: var(--text); }
+    .diff-line small { color: var(--muted); display: block; margin-top: 2px; }
     @media (max-width: 900px) {
       .wrap { width: min(100vw - 24px, 760px); }
       .topbar { display: block; }
       .navs { justify-content: flex-start; margin-top: 12px; }
       table { min-width: 940px; }
       .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .compare-controls { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -163,6 +207,27 @@
 
     <section class="card">
       <div class="card-head">
+        <h2>基线比对</h2>
+        <div class="muted">当前阶段比对基础字段，截图时间按弱差异处理</div>
+      </div>
+      <div class="compare-controls">
+        <div class="control">
+          <label for="compareBaseline">选择基线</label>
+          <select class="select" id="compareBaseline"></select>
+        </div>
+        <div class="control">
+          <label for="compareTask">选择已完成任务</label>
+          <select class="select" id="compareTask"></select>
+        </div>
+        <button class="btn" id="compareBtn" type="button">开始比对</button>
+      </div>
+      <div id="compareResult" class="compare-result">
+        <div class="empty">选择基线和任务后开始比对。</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
         <h2>基线详情</h2>
         <div id="detailTitle" class="muted">选择一条基线查看详情</div>
       </div>
@@ -178,7 +243,12 @@
     const list = $("list");
     const detail = $("detail");
     const detailTitle = $("detailTitle");
+    const compareBaseline = $("compareBaseline");
+    const compareTask = $("compareTask");
+    const compareBtn = $("compareBtn");
+    const compareResult = $("compareResult");
     let baselines = [];
+    let tasks = [];
 
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -244,12 +314,37 @@
                 <td>${Number(b.record_count || 0)}</td>
                 <td>${Number(b.image_count || 0)}</td>
                 <td class="mono">${esc(fmtTime(b.created_at))}</td>
-                <td class="right"><button class="btn" type="button" onclick="loadDetail('${esc(b.id)}')">查看</button></td>
+                <td class="right">
+                  <button class="btn" type="button" onclick="loadDetail('${esc(b.id)}')">查看</button>
+                  <button class="btn" type="button" onclick="selectBaselineForCompare('${esc(b.id)}')">比对</button>
+                </td>
               </tr>
             `).join("")}
           </tbody>
         </table>
       `;
+    }
+
+    function renderCompareControls() {
+      const selectedBaseline = compareBaseline.value || new URL(location.href).searchParams.get("id") || "";
+      compareBaseline.innerHTML = baselines.length
+        ? baselines.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} · ${esc(typeLabel(b.type))}</option>`).join("")
+        : `<option value="">暂无基线</option>`;
+      if (selectedBaseline && baselines.some((b) => b.id === selectedBaseline)) {
+        compareBaseline.value = selectedBaseline;
+      }
+
+      const completed = tasks.filter((t) => t.status === "completed");
+      compareTask.innerHTML = completed.length
+        ? completed.map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)} · ${Number(t.records_total || 0)} 条</option>`).join("")
+        : `<option value="">暂无已完成任务</option>`;
+      compareBtn.disabled = !baselines.length || !completed.length;
+    }
+
+    function selectBaselineForCompare(id) {
+      compareBaseline.value = id;
+      loadDetail(id);
+      document.querySelector(".compare-controls").scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
     function renderDetail(data) {
@@ -306,6 +401,145 @@
       `;
     }
 
+    function severityLabel(severity) {
+      const map = { info: "提示", low: "低", medium: "中", high: "高", critical: "极高" };
+      return map[severity] || severity || "—";
+    }
+
+    function bizLabel(status) {
+      const map = { same: "业务一致", changed: "业务变化", new: "新增", missing: "缺失" };
+      return map[status] || status || "—";
+    }
+
+    function captureLabel(status) {
+      const map = {
+        same: "截图时间一致",
+        newer: "截图时间更新",
+        older: "疑似旧截图",
+        missing_current: "本次缺失时间",
+        filled: "本次补齐时间",
+        invalid: "时间异常",
+        changed: "截图时间变化",
+        missing: "截图时间缺失",
+      };
+      return map[status] || status || "—";
+    }
+
+    function recordName(row) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      return current.person_name || baseline.person_name || "—";
+    }
+
+    function recordId(row) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      return current.file_id || baseline.file_id || "—";
+    }
+
+    function recordMaskedId(row) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      return current.masked_id || baseline.masked_id || "—";
+    }
+
+    function recordCapture(row) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      const value = [current.capture_date || baseline.capture_date, current.capture_time || baseline.capture_time].filter(Boolean).join(" ");
+      return value || "—";
+    }
+
+    function renderFieldDiffs(row) {
+      const diffs = row.field_diffs || [];
+      if (!diffs.length) return `<span class="muted">${esc(captureLabel(row.capture_time_diff_status))}</span>`;
+      return `
+        <div class="diff-list">
+          ${diffs.map((d) => `
+            <div class="diff-line">
+              ${esc(d.field_name)}：${esc(d.baseline_value || "—")} → ${esc(d.current_value || "—")}
+              <small>${esc(d.diff_type || "")}</small>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderCompareResult(data) {
+      const s = data.summary || {};
+      const rows = data.records || [];
+      const focusRows = rows.filter((r) => r.requires_review || r.business_diff_status !== "same" || r.capture_time_diff_status === "older");
+      const displayRows = (focusRows.length ? focusRows : rows).slice(0, 300);
+      compareResult.innerHTML = `
+        <div class="compare-summary">
+          <div class="metric"><div class="k">总记录</div><div class="v">${Number(s.total_records || 0)}</div></div>
+          <div class="metric"><div class="k">业务一致</div><div class="v">${Number(s.same_records || 0)}</div></div>
+          <div class="metric"><div class="k">业务变化</div><div class="v">${Number(s.business_changed_records || 0)}</div></div>
+          <div class="metric"><div class="k">新增/缺失</div><div class="v">${Number(s.new_records || 0)} / ${Number(s.missing_records || 0)}</div></div>
+          <div class="metric"><div class="k">仅时间变化</div><div class="v">${Number(s.capture_time_only_changed || 0)}</div></div>
+          <div class="metric"><div class="k">需复核</div><div class="v">${Number(s.requires_review || 0)}</div></div>
+        </div>
+        <div class="scroll-box">
+          <table>
+            <thead>
+              <tr>
+                <th>编号</th>
+                <th>姓名</th>
+                <th>身份证号</th>
+                <th>截图时间</th>
+                <th>业务状态</th>
+                <th>采集时间</th>
+                <th>风险</th>
+                <th>差异</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${displayRows.map((row) => `
+                <tr>
+                  <td>${esc(recordId(row))}</td>
+                  <td>${esc(recordName(row))}</td>
+                  <td>${esc(recordMaskedId(row))}</td>
+                  <td>${esc(recordCapture(row))}</td>
+                  <td><span class="diff-status ${esc(row.business_diff_status)}">${esc(bizLabel(row.business_diff_status))}</span></td>
+                  <td>${esc(captureLabel(row.capture_time_diff_status))}</td>
+                  <td><span class="diff-status ${esc(row.severity)}">${esc(severityLabel(row.severity))}</span></td>
+                  <td>${renderFieldDiffs(row)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+        ${focusRows.length > 300 ? `<div class="muted" style="margin-top:10px;">仅展示前 300 条重点差异。</div>` : ""}
+      `;
+    }
+
+    async function startCompare() {
+      const baselineId = compareBaseline.value;
+      const taskId = compareTask.value;
+      if (!baselineId || !taskId) {
+        alert("请先选择基线和已完成任务。");
+        return;
+      }
+      compareBtn.disabled = true;
+      compareBtn.textContent = "比对中...";
+      compareResult.innerHTML = `<div class="empty">正在生成差异结果...</div>`;
+      try {
+        const res = await fetch("/api/compare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseline_id: baselineId, task_id: taskId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "比对失败");
+        renderCompareResult(data);
+      } catch (err) {
+        compareResult.innerHTML = `<div class="empty">${esc(err.message || String(err))}</div>`;
+      } finally {
+        compareBtn.disabled = false;
+        compareBtn.textContent = "开始比对";
+      }
+    }
+
     async function loadDetail(id) {
       detail.innerHTML = `<div class="empty">正在加载基线详情...</div>`;
       const res = await fetch(`/api/baselines/${encodeURIComponent(id)}`);
@@ -321,21 +555,25 @@
     }
 
     async function refresh() {
-      const res = await fetch("/api/baselines");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const [baselineRes, taskRes] = await Promise.all([fetch("/api/baselines"), fetch("/api/tasks")]);
+      const data = await baselineRes.json().catch(() => ({}));
+      const taskData = await taskRes.json().catch(() => ({}));
+      if (!baselineRes.ok) {
         list.innerHTML = `<div class="empty">${esc(data.detail || "加载失败")}</div>`;
         return;
       }
       baselines = data.baselines || [];
+      tasks = taskData.tasks || [];
       renderStats();
       renderList();
+      renderCompareControls();
       const targetId = new URL(location.href).searchParams.get("id");
       if (targetId) {
         loadDetail(targetId);
       }
     }
 
+    compareBtn.addEventListener("click", startCompare);
     refresh();
   </script>
 </body>

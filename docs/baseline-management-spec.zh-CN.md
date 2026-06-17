@@ -864,7 +864,7 @@ POST /api/compare
 ```text
 /                       处理台，进入任务结果和基线管理
 /runs/{task}/dashboard  结果列表页，人工复核后保存基线
-/baselines              基线管理页，查看基线列表和详情
+/baselines              基线管理页，查看基线列表、详情，并执行基础字段比对
 ```
 
 当前基础比对能力：
@@ -882,3 +882,18 @@ curl -X POST http://127.0.0.1:8090/api/compare \
   -H 'Content-Type: application/json' \
   -d '{"baseline_id":"<baseline_id>","task_id":"<task_id>"}'
 ```
+
+当前比对页面能力：
+
+1. `/baselines` 支持选择基线版本。
+2. `/baselines` 支持选择已完成任务。
+3. 点击“开始比对”后调用 `POST /api/compare`。
+4. 页面展示总记录、业务一致、业务变化、新增/缺失、仅时间变化、需复核等聚合指标。
+5. 页面展示重点差异记录，包含编号、姓名、身份证号、截图时间、业务状态、采集时间状态、风险和字段差异。
+
+限制：
+
+1. 当前页面只展示基础字段差异。
+2. 当前比对结果不持久化。
+3. 当前不包含 Excel 导出。
+4. 当前不包含任职企业明细 diff。
