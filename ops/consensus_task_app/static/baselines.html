@@ -1321,7 +1321,7 @@
     }
 
     function businessDecisionRequiredCount(row) {
-      if (["new", "missing"].includes(row.business_diff_status)) return 1;
+      if (["new", "missing"].includes(row.business_diff_status)) return 0;
       return visibleBusinessDiffs(row).length;
     }
 
@@ -1784,6 +1784,8 @@
     }
 
     function renderBasicDiffChips(row) {
+      if (row.business_diff_status === "new") return `<span class="diff-chip changed">新增记录</span>`;
+      if (row.business_diff_status === "missing") return `<span class="diff-chip changed">基线缺失</span>`;
       const diffs = visibleBusinessDiffs(row);
       if (!diffs.length) return `<span class="diff-chip same">基础信息无变化</span>`;
       return diffs.slice(0, 6).map((d) => `
