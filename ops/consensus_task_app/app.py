@@ -17,13 +17,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+
+try:
+    from .baseline_store import BaselineError, BaselineStore
+except ImportError:
+    from baseline_store import BaselineError, BaselineStore
 
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS_ROOT = Path(os.getenv("OCR_CONSENSUS_RUNS_DIR", ROOT / "ops" / "reports" / "ocr_consensus_task_runs"))
+BASELINES_ROOT = Path(os.getenv("OCR_CONSENSUS_BASELINES_DIR", ROOT / "ops" / "reports" / "ocr_consensus_baselines"))
+BASELINE_DB = Path(os.getenv("OCR_CONSENSUS_BASELINE_DB", BASELINES_ROOT / "baselines.db"))
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 COLLECT_RUNNER = ROOT / "ops" / "199_ocr_collect_runner.py"
 DASHBOARD_BUILDER = ROOT / "ops" / "199_build_ocr_html_list.py"
@@ -96,6 +103,7 @@ PERSON_STOPWORDS = NAME_NOISE_TOKENS | {
 }
 
 RUNS_ROOT.mkdir(parents=True, exist_ok=True)
+BASELINES_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="4OCR Consensus Task App", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -106,6 +114,7 @@ TASKS: Dict[str, Dict[str, Any]] = {}
 TASK_QUEUE: asyncio.Queue[str] = asyncio.Queue()
 WORKER_TASK: Optional[asyncio.Task] = None
 TASK_PROCS: Dict[str, Set[Any]] = defaultdict(set)
+BASELINE_STORE = BaselineStore(BASELINE_DB, RUNS_ROOT)
 
 
 class TaskStopped(Exception):
@@ -1940,6 +1949,7 @@ def _ensure_worker() -> None:
 @app.on_event("startup")
 async def _startup() -> None:
     _load_existing_tasks()
+    BASELINE_STORE.init_db()
     for task in sorted(TASKS.values(), key=lambda t: t.get("created_at", "")):
         if task.get("status") == "queued":
             await TASK_QUEUE.put(task["id"])
@@ -2029,6 +2039,38 @@ async def get_task(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="task not found")
     return task
+
+
+@app.post("/api/tasks/{task_id}/baseline")
+async def save_task_as_baseline(task_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+    task = TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+    payload = payload or {}
+    try:
+        baseline = BASELINE_STORE.create_from_task(
+            task,
+            name=str(payload.get("name") or "").strip(),
+            baseline_type=str(payload.get("type") or "snapshot").strip() or "snapshot",
+            notes=str(payload.get("notes") or "").strip(),
+            created_by=str(payload.get("created_by") or "").strip(),
+        )
+    except BaselineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "baseline": baseline}
+
+
+@app.get("/api/baselines")
+async def list_baselines():
+    return {"baselines": BASELINE_STORE.list_baselines()}
+
+
+@app.get("/api/baselines/{baseline_id}")
+async def get_baseline(baseline_id: str):
+    try:
+        return BASELINE_STORE.get_baseline(baseline_id)
+    except BaselineError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.delete("/api/tasks/{task_id}")
