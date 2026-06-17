@@ -82,10 +82,13 @@
     .chip.ok { color: var(--ok); background: var(--success-bg); }
     .chip.warn { color: var(--warn); background: var(--warning-bg); }
     .chip.bad { color: var(--bad); background: var(--danger-bg); }
-    .layout { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(520px, .96fr); gap: 14px; align-items: start; }
-    .data-stack { display: grid; gap: 14px; min-width: 0; }
-    .image-rail { position: sticky; top: 76px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
+    .layout { min-height: max(560px, calc(100svh - 154px)); display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(520px, .96fr); gap: 14px; align-items: stretch; }
+    .data-stack { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; min-width: 0; }
+    .image-rail { position: sticky; top: 76px; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; align-self: stretch; }
     .panel { border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,.94); overflow: hidden; box-shadow: var(--shadow); }
+    .data-stack .panel:last-child { min-height: 0; display: flex; flex-direction: column; }
+    .data-stack .panel:last-child .company-list { flex: 1; overflow: auto; }
+    .data-stack .panel:last-child > .empty { flex: 1; min-height: 180px; display: grid; place-items: center; }
     .panel h2 { margin: 0; padding: 11px 14px; border-bottom: 1px solid var(--line-soft); background: rgba(243,240,232,.50); font-size: 14px; font-weight: 720; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { padding: 9px 11px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
@@ -115,9 +118,9 @@
     .company-name small { display: block; color: var(--muted); font-weight: 420; margin-top: 3px; }
     .company-fields { padding: 0 12px 12px; }
     .company-fields table { border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; background: #fff; }
-    .image-panel { border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,.94); overflow: hidden; box-shadow: var(--shadow); }
+    .image-panel { min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,.94); overflow: hidden; box-shadow: var(--shadow); }
     .image-panel h2 { margin: 0; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); background: rgba(243,240,232,.50); font-size: 13px; font-weight: 720; overflow-wrap: anywhere; }
-    .image-frame { height: clamp(320px, 42vh, 480px); display: grid; place-items: end center; background: #F2EFE7; overflow: auto; }
+    .image-frame { flex: 1; min-height: 320px; display: grid; place-items: end center; background: #F2EFE7; overflow: auto; }
     .image-frame img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; cursor: zoom-in; }
     .image-frame img.zoomed { width: auto; height: auto; max-width: 100%; max-height: none; cursor: zoom-out; }
     .image-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line-soft); background: var(--paper); }
@@ -128,7 +131,7 @@
     @media (max-width: 1120px) {
       .layout { grid-template-columns: 1fr; }
       .image-rail { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .image-frame { height: clamp(300px, 40vh, 430px); }
+      .image-frame { min-height: 300px; }
     }
     @media (max-width: 760px) {
       .container { width: min(100vw - 24px, 760px); }
