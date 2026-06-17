@@ -125,7 +125,7 @@ class TaskStopped(Exception):
 async def _no_cache_static(request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path == "/" or path.startswith("/runs/") or path.startswith("/static/") or path.startswith("/assets/"):
+    if path in {"/", "/baselines"} or path.startswith("/runs/") or path.startswith("/static/") or path.startswith("/assets/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -1959,6 +1959,11 @@ async def _startup() -> None:
 @app.get("/")
 async def home():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/baselines")
+async def baselines_page():
+    return FileResponse(STATIC_DIR / "baselines.html")
 
 
 @app.post("/api/tasks")

@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OCR 基线管理</title>
+  <style>
+    @font-face {
+      font-family: "OCRSansSC";
+      src: url("/assets/fonts/SourceHanSansSC-Regular.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    :root {
+      --bg: #F8F6F0;
+      --panel: #FFFDF8;
+      --line: #E6E0D4;
+      --line-soft: #EEE8DC;
+      --text: #2F2A24;
+      --muted: #7B746A;
+      --green: #7F9D8C;
+      --green-strong: #5E7668;
+      --green-soft: #E7F0EA;
+      --blue: #637D93;
+      --blue-soft: #E8EEF4;
+      --amber: #9A7A3F;
+      --amber-soft: #F5EDD9;
+      --red: #B46458;
+      --red-soft: #F8E7E3;
+      --shadow: 0 10px 32px rgba(62, 54, 43, .055);
+      --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Hiragino Sans GB", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(221, 235, 226, .75), transparent 240px),
+        radial-gradient(circle at 88% 4%, rgba(216, 185, 154, .22), transparent 260px),
+        linear-gradient(180deg, rgba(255,253,248,.88), rgba(248,246,240,.96)),
+        var(--bg);
+      font-family: var(--font-ui);
+      font-variant-numeric: tabular-nums;
+    }
+    .wrap { width: min(1280px, calc(100vw - 48px)); margin: 0 auto; padding: 32px 0 48px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 3vw, 36px); font-weight: 500; letter-spacing: -.6px; }
+    .sub { margin: 0; max-width: 760px; color: var(--muted); line-height: 1.7; font-size: 14px; }
+    .navs { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .nav-link, .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--green-strong);
+      background: var(--panel);
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:hover, .nav-link:hover { background: var(--green-soft); }
+    .card {
+      background: rgba(255,253,248,.92);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card + .card { margin-top: 20px; }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(255,253,248,.72);
+    }
+    .card-head h2 { margin: 0; font-weight: 500; font-size: 18px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: var(--green-strong);
+      background: var(--green-soft);
+      border: 1px solid #CFE3D6;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .chip.snapshot { color: var(--blue); background: var(--blue-soft); border-color: #CFDAE4; }
+    .chip.golden { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
+    .chip.candidate { color: var(--green-strong); background: var(--green-soft); border-color: #CFE3D6; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: middle; }
+    th { color: var(--muted); background: rgba(243,240,232,.58); font-size: 12px; font-weight: 800; white-space: nowrap; }
+    tr:hover td { background: #F9F7F1; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); }
+    .name-cell { min-width: 260px; }
+    .title { font-weight: 800; color: var(--text); }
+    .muted { color: var(--muted); }
+    .empty { padding: 42px; text-align: center; color: var(--muted); }
+    .detail { padding: 22px; display: grid; gap: 18px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .metric {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+      padding: 13px 14px;
+      min-height: 78px;
+    }
+    .metric .k { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .metric .v { font-size: 20px; font-weight: 850; }
+    .section-title { margin: 4px 0 0; font-size: 15px; font-weight: 850; }
+    .scroll-box {
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+    }
+    .field-table td:first-child { color: var(--muted); width: 128px; }
+    .field-table td:last-child { font-weight: 750; }
+    .right { text-align: right; }
+    @media (max-width: 900px) {
+      .wrap { width: min(100vw - 24px, 760px); }
+      .topbar { display: block; }
+      .navs { justify-content: flex-start; margin-top: 12px; }
+      table { min-width: 940px; }
+      .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>OCR 基线管理</h1>
+        <p class="sub">保存任务结果为基线版本，查看基线快照的基础信息、任职明细和证据摘要。当前页面是基线功能的第一个页面测试点。</p>
+      </div>
+      <div class="navs">
+        <a class="nav-link" href="/">返回处理台</a>
+        <button class="btn" type="button" onclick="refresh()">刷新</button>
+      </div>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>基线版本</h2>
+        <div id="stats" class="stats"></div>
+      </div>
+      <div id="list" class="table-wrap"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>基线详情</h2>
+        <div id="detailTitle" class="muted">选择一条基线查看详情</div>
+      </div>
+      <div id="detail" class="detail">
+        <div class="empty">暂无基线详情。</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const stats = $("stats");
+    const list = $("list");
+    const detail = $("detail");
+    const detailTitle = $("detailTitle");
+    let baselines = [];
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function fmtTime(s) {
+      return s ? String(s).replace("T", " ") : "—";
+    }
+
+    function typeLabel(type) {
+      const map = { snapshot: "快照", candidate: "候选", golden: "正式" };
+      return map[type] || type || "未知";
+    }
+
+    function fieldValue(fields, key) {
+      const value = fields && fields[key];
+      return value === undefined || value === null || value === "" ? "—" : value;
+    }
+
+    function renderStats() {
+      const counts = baselines.reduce((acc, item) => {
+        acc[item.type] = (acc[item.type] || 0) + 1;
+        return acc;
+      }, {});
+      stats.innerHTML = [
+        `总基线 ${baselines.length}`,
+        `快照 ${counts.snapshot || 0}`,
+        `候选 ${counts.candidate || 0}`,
+        `正式 ${counts.golden || 0}`,
+      ].map((x) => `<span class="chip">${x}</span>`).join("");
+    }
+
+    function renderList() {
+      if (!baselines.length) {
+        list.innerHTML = `<div class="empty">暂无基线。请先在处理台选择一个已完成任务并保存基线。</div>`;
+        return;
+      }
+      list.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>基线</th>
+              <th>类型</th>
+              <th>来源任务</th>
+              <th>记录</th>
+              <th>图片</th>
+              <th>创建时间</th>
+              <th class="right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${baselines.map((b) => `
+              <tr>
+                <td class="name-cell">
+                  <div class="title">${esc(b.name)}</div>
+                  <div class="mono">${esc(b.id)}</div>
+                </td>
+                <td><span class="chip ${esc(b.type)}">${esc(typeLabel(b.type))}${b.is_active_golden ? " · active" : ""}</span></td>
+                <td>
+                  <div>${esc(b.source_task_name || "—")}</div>
+                  <div class="mono">${esc(b.source_task_id || "")}</div>
+                </td>
+                <td>${Number(b.record_count || 0)}</td>
+                <td>${Number(b.image_count || 0)}</td>
+                <td class="mono">${esc(fmtTime(b.created_at))}</td>
+                <td class="right"><button class="btn" type="button" onclick="loadDetail('${esc(b.id)}')">查看</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderDetail(data) {
+      detailTitle.textContent = data.name || data.id || "基线详情";
+      const records = data.records || [];
+      const employmentRows = data.employment_rows || [];
+      const first = records[0] || {};
+      const fields = first.fields || {};
+      detail.innerHTML = `
+        <div class="detail-grid">
+          <div class="metric"><div class="k">记录数</div><div class="v">${Number(data.record_count || records.length || 0)}</div></div>
+          <div class="metric"><div class="k">图片数</div><div class="v">${Number(data.image_count || 0)}</div></div>
+          <div class="metric"><div class="k">任职明细</div><div class="v">${employmentRows.length}</div></div>
+          <div class="metric"><div class="k">类型</div><div class="v">${esc(typeLabel(data.type))}</div></div>
+        </div>
+
+        <div>
+          <div class="section-title">首条记录预览</div>
+          <div class="scroll-box">
+            <table class="field-table">
+              <tbody>
+                <tr><td>文件编号</td><td>${esc(first.file_id || "—")}</td></tr>
+                <tr><td>姓名</td><td>${esc(first.person_name || fieldValue(fields, "姓名"))}</td></tr>
+                <tr><td>身份证号</td><td>${esc(first.masked_id || fieldValue(fields, "身份证号"))}</td></tr>
+                <tr><td>截图时间</td><td>${esc([first.capture_date, first.capture_time].filter(Boolean).join(" ") || "—")}</td></tr>
+                <tr><td>相关/任职/参股</td><td>${esc(first.related_count || "0")} / ${esc(first.employment_count || "0")} / ${esc(first.shareholding_count || "0")}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">任职明细预览</div>
+          <div class="scroll-box">
+            ${employmentRows.length ? `
+              <table>
+                <thead><tr><th>#</th><th>企业</th><th>状态</th><th>职务</th><th>持股</th><th>证据状态</th></tr></thead>
+                <tbody>
+                  ${employmentRows.slice(0, 80).map((row, idx) => `
+                    <tr>
+                      <td>${idx + 1}</td>
+                      <td>${esc(row.company_name || "—")}</td>
+                      <td>${esc(row.business_status || "—")}</td>
+                      <td>${esc(row.role || "—")}</td>
+                      <td>${esc(row.share_ratio || "—")}</td>
+                      <td>${esc(row.row_status || "—")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            ` : `<div class="empty">该基线暂无任职明细行。</div>`}
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadDetail(id) {
+      detail.innerHTML = `<div class="empty">正在加载基线详情...</div>`;
+      const res = await fetch(`/api/baselines/${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        detail.innerHTML = `<div class="empty">${esc(data.detail || "加载失败")}</div>`;
+        return;
+      }
+      renderDetail(data);
+      const url = new URL(location.href);
+      url.searchParams.set("id", id);
+      history.replaceState(null, "", url);
+    }
+
+    async function refresh() {
+      const res = await fetch("/api/baselines");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        list.innerHTML = `<div class="empty">${esc(data.detail || "加载失败")}</div>`;
+        return;
+      }
+      baselines = data.baselines || [];
+      renderStats();
+      renderList();
+      const targetId = new URL(location.href).searchParams.get("id");
+      if (targetId) {
+        loadDetail(targetId);
+      }
+    }
+
+    refresh();
+  </script>
+</body>
+</html>
