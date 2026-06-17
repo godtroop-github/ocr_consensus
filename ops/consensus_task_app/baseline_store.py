@@ -5,6 +5,7 @@ import re
 import sqlite3
 import uuid
 from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import unquote
@@ -912,7 +913,6 @@ class BaselineStore:
         current: Dict[str, Any],
         current_employment: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        employment_diffs = self._employment_added_diffs(current_employment or [])
         current_images = self._record_images(current, current_employment or [])
         return {
             "record_key": current.get("record_key"),
@@ -920,8 +920,8 @@ class BaselineStore:
             "business_diff_status": "new",
             "capture_time_diff_status": "filled" if current.get("capture_date") or current.get("capture_time") else "missing",
             "ocr_quality_diff_status": "same",
-            "severity": "high",
-            "requires_review": True,
+            "severity": "info",
+            "requires_review": False,
             "field_diffs": [],
             "employment_diffs": [],
             "employment_summary": self._employment_summary([], current_employment or [], 0, 0, len(current_employment or []), 0),
@@ -940,7 +940,6 @@ class BaselineStore:
         baseline: Dict[str, Any],
         baseline_employment: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        employment_diffs = self._employment_missing_diffs(baseline_employment or [])
         baseline_images = self._record_images(baseline, baseline_employment or [])
         return {
             "record_key": baseline.get("record_key"),
@@ -948,8 +947,8 @@ class BaselineStore:
             "business_diff_status": "missing",
             "capture_time_diff_status": "missing",
             "ocr_quality_diff_status": "same",
-            "severity": "high",
-            "requires_review": True,
+            "severity": "info",
+            "requires_review": False,
             "field_diffs": [],
             "employment_diffs": [],
             "employment_summary": self._employment_summary(baseline_employment or [], [], 0, 0, 0, len(baseline_employment or [])),
@@ -1138,6 +1137,12 @@ class BaselineStore:
         for idx, current_row in enumerate(current_rows):
             if idx in used_current:
                 continue
+            current_key = _to_text(current_row.get("company_key"))
+            if self._company_keys_compatible(baseline_key, current_key, baseline_placeholder):
+                return idx
+        for idx, current_row in enumerate(current_rows):
+            if idx in used_current:
+                continue
             if (
                 baseline_placeholder
                 and self._is_placeholder_company(current_row)
@@ -1145,6 +1150,15 @@ class BaselineStore:
             ):
                 return idx
         return None
+
+    def _company_keys_compatible(self, baseline_key: str, current_key: str, baseline_placeholder: bool) -> bool:
+        baseline_key = _to_text(baseline_key)
+        current_key = _to_text(current_key)
+        if baseline_placeholder or not baseline_key or not current_key:
+            return False
+        if baseline_key in current_key or current_key in baseline_key:
+            return min(len(baseline_key), len(current_key)) >= 6
+        return SequenceMatcher(None, baseline_key, current_key).ratio() >= 0.86
 
     def _employment_added_diffs(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         diffs: List[Dict[str, Any]] = []
