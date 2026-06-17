@@ -1374,23 +1374,28 @@
       const required = rows.reduce((sum, row) => sum + rowDecisionRequiredCount(row), 0);
       const decided = rows.reduce((sum, row) => sum + rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]), 0);
       const pending = Math.max(0, required - decided);
-      const disabled = required === 0 || decided < required;
       const statusHtml = required === 0
         ? `<span class="decision-chip done">无需裁决</span>`
         : pending > 0
           ? `<span class="decision-chip need">待裁决 ${pending} 项</span><span class="decision-chip">已裁决 ${decided}/${required}</span>`
           : `<span class="decision-chip done">已完成 ${decided}/${required}</span>`;
+      const buttonText = required === 0 ? "无需更新" : "提交基线更新";
+      const buttonTitle = required === 0
+        ? "本次比对没有需要裁决的业务差异，不生成新的真实基线版本。"
+        : pending > 0
+          ? `还有 ${pending} 项未裁决，点击可查看提示。`
+          : "提交全部裁决并生成新的真实基线版本。";
       return `
         <div class="decision-bar">
           <div>
             <strong>真实基线更新</strong>
             <div class="compare-note" style="margin:3px 0 0;">
-              一致和仅证据变化无需处理；业务不一致需先在详情页裁决，最后统一生成新基线版本。
+              一致、仅截图时间变化、新增/缺失记录不自动生成新基线；只有已匹配记录的基础字段或任职明细差异需要裁决。
             </div>
           </div>
           <div class="stats">
             ${statusHtml}
-            <button class="btn" id="submitBaselineUpdate" type="button" ${disabled ? "disabled" : ""}>提交基线更新</button>
+            <button class="btn" id="submitBaselineUpdate" type="button" title="${esc(buttonTitle)}">${esc(buttonText)}</button>
           </div>
         </div>
       `;
