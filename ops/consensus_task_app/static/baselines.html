@@ -223,6 +223,31 @@
     }
     .risk-pill strong { display: block; font-size: 18px; }
     .risk-pill span { color: var(--muted); font-size: 11px; }
+
+    .compare-filter-summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+    .compare-filter-summary .chip { margin: 0; }
+    th.sort-filter-th { padding: 0; }
+    .th-wrap { display: inline-flex; align-items: center; gap: 4px; padding: 11px 12px; width: 100%; }
+    .th-sort { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 850; cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .sort-mark::after { content: ""; color: var(--green-strong); font-size: 10px; }
+    .sort-mark.asc::after { content: "▲"; }
+    .sort-mark.desc::after { content: "▼"; }
+    .th-filter { width: 22px; height: 22px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; position: relative; flex: 0 0 auto; }
+    .th-filter::before { content: "▾"; font-size: 11px; line-height: 1; }
+    .th-filter.active { border-color: #BFD8CA; background: var(--green-soft); color: var(--green-strong); }
+    .th-filter.active::after { content: attr(data-count); position: absolute; right: -5px; top: -6px; min-width: 14px; height: 14px; border-radius: 999px; background: var(--green-strong); color: #fff; font-size: 9px; display: grid; place-items: center; padding: 0 3px; }
+    .col-popover { position: fixed; z-index: 100; width: 290px; max-height: 430px; display: none; border: 1px solid #CFE3D6; border-radius: 16px; background: #FFFDF8; box-shadow: 0 18px 45px rgba(62,54,43,.18); overflow: hidden; }
+    .col-popover.open { display: block; }
+    .pop-head { padding: 10px; border-bottom: 1px solid var(--line-soft); display: grid; gap: 8px; }
+    .pop-title { font-size: 12px; font-weight: 900; color: var(--text); }
+    .pop-search { width: 100%; border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 7px 9px; font: inherit; font-size: 12px; }
+    .pop-actions { display: flex; gap: 6px; }
+    .pop-btn { border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted); padding: 5px 8px; font-size: 11px; font-weight: 850; cursor: pointer; }
+    .pop-options { max-height: 286px; overflow: auto; padding: 8px 10px; display: grid; gap: 4px; }
+    .pop-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12px; }
+    .pop-option label { min-width: 0; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+    .pop-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pop-count { color: var(--muted); font-size: 11px; }
     .compare-filters {
       display: flex;
       flex-wrap: wrap;
@@ -760,6 +785,10 @@
     let lastCompareData = null;
     let compareFilter = "review";
     let compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false };
+    let compareColumnFilters = {};
+    let compareColumnSort = { key: "", direction: "asc" };
+    let compareHeaderBaseRows = [];
+    let compareOpenFilterKey = "";
     const COMPARE_STATE_KEY = "ocr_baseline_compare_state_v2";
     const COMPARE_DECISIONS_KEY = "ocr_baseline_compare_decisions_v1";
 
@@ -1178,6 +1207,8 @@
         task_id: compareDataTaskId(data),
         compareFilter,
         compareDetailFilters: { ...compareDetailFilters },
+        compareColumnFilters: Object.fromEntries(Object.entries(compareColumnFilters).map(([k, v]) => [k, Array.from(v || [])])),
+        compareColumnSort: { ...compareColumnSort },
         filteredIndexes: (filteredRows || []).map((row) => Number(row._compare_idx)).filter((n) => Number.isFinite(n)),
         compareData: data,
         savedAt: Date.now(),
@@ -1243,6 +1274,11 @@
       }
       compareFilter = state.compareFilter || "review";
       compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false, ...(state.compareDetailFilters || {}) };
+      compareColumnFilters = {};
+      for (const [key, values] of Object.entries(state.compareColumnFilters || {})) {
+        compareColumnFilters[key] = new Set(Array.isArray(values) ? values : []);
+      }
+      compareColumnSort = { key: "", direction: "asc", ...(state.compareColumnSort || {}) };
       renderCompareResult(state.compareData);
       return true;
     }
@@ -1276,8 +1312,20 @@
       `;
     }
 
+    function businessDecisionRequiredCount(row) {
+      if (["new", "missing"].includes(row.business_diff_status)) return 1;
+      return (row.business_diffs || []).filter((d) => {
+        const name = String(d.field_name || d.field || "");
+        return !["截图日期", "截图时间", "截图时间一致", "capture_date", "capture_time"].includes(name);
+      }).length;
+    }
+
+    function employmentDecisionRequiredCount(row) {
+      return (row.employment_diffs || []).length;
+    }
+
     function rowNeedsDecision(row) {
-      return ["changed", "new", "missing"].includes(row.business_diff_status);
+      return rowDecisionRequiredCount(row) > 0;
     }
 
     function employmentDecisionGroups(row) {
@@ -1296,8 +1344,7 @@
     }
 
     function rowDecisionRequiredCount(row) {
-      if (["new", "missing"].includes(row.business_diff_status)) return 1;
-      return (row.field_diffs || []).filter((d) => d.section !== "employment").length + employmentDecisionGroups(row).length;
+      return businessDecisionRequiredCount(row) + employmentDecisionRequiredCount(row);
     }
 
     function rowDecisionResolvedCount(row, decision) {
@@ -1313,7 +1360,7 @@
 
     function decisionLabel(decision) {
       const action = decision && decision.action;
-      const map = { keep_baseline: "保留", accept_current: "采用", manual: "修正", remove: "移除", field_decisions: "字段" };
+      const map = { keep_baseline: "保留", accept_current: "采用", manual: "修正", remove: "移除", field_decisions: "已裁决" };
       return map[action] || "";
     }
 
@@ -1521,6 +1568,187 @@
         || compareDetailFilters.decision
         || compareDetailFilters.reviewOnly
       );
+    }
+
+
+    const COMPARE_COLUMN_DEFS = [
+      { key: "status", label: "状态" },
+      { key: "severity", label: "风险" },
+      { key: "record_id", label: "编号" },
+      { key: "name", label: "姓名" },
+      { key: "masked_id", label: "身份证号" },
+      { key: "capture", label: "截图时间" },
+      { key: "basic", label: "基础差异" },
+      { key: "employment", label: "任职差异" },
+      { key: "decision", label: "裁决" },
+    ];
+
+    function compareColumnDefByKey(key) {
+      return COMPARE_COLUMN_DEFS.find((d) => d.key === key);
+    }
+
+    function compareColumnText(row, key, decisions = {}) {
+      if (key === "status") return recordStatusLabel(row);
+      if (key === "severity") return severityLabel(row.severity);
+      if (key === "record_id") return recordId(row);
+      if (key === "name") return recordName(row);
+      if (key === "masked_id") return recordMaskedId(row);
+      if (key === "capture") return recordCapture(row);
+      if (key === "basic") return (row.business_diffs || []).length ? renderBasicDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "基础信息无变化";
+      if (key === "employment") return (row.employment_diffs || []).length ? renderEmploymentSummaryChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "任职明细无变化";
+      if (key === "decision") {
+        if (!rowNeedsDecision(row)) return "无需裁决";
+        return decisionLabel(decisions[String(row._compare_idx)]) || "待裁决";
+      }
+      return "—";
+    }
+
+    function compareColumnFilterSummary() {
+      const chips = [];
+      for (const def of COMPARE_COLUMN_DEFS) {
+        const picked = compareColumnFilters[def.key];
+        if (picked && picked.size) chips.push(`<span class="chip">${esc(def.label)}: ${picked.size}</span>`);
+      }
+      if (compareColumnSort.key) {
+        const def = compareColumnDefByKey(compareColumnSort.key);
+        chips.push(`<span class="chip">排序: ${esc(def ? def.label : compareColumnSort.key)} ${compareColumnSort.direction === "desc" ? "降序" : "升序"}</span>`);
+      }
+      return `<div id="compareFilterSummary" class="compare-filter-summary">${chips.length ? chips.join("") : '<span class="chip">未设置列筛选</span>'}</div>`;
+    }
+
+    function applyCompareColumnFilters(rows, decisions) {
+      return rows.filter((row) => {
+        for (const def of COMPARE_COLUMN_DEFS) {
+          const picked = compareColumnFilters[def.key];
+          if (!picked || !picked.size) continue;
+          if (!picked.has(compareColumnText(row, def.key, decisions) || "—")) return false;
+        }
+        return true;
+      });
+    }
+
+    function sortCompareRows(rows, decisions) {
+      if (!compareColumnSort.key) return rows;
+      const dir = compareColumnSort.direction === "desc" ? -1 : 1;
+      return [...rows].sort((a, b) => {
+        const av = compareColumnText(a, compareColumnSort.key, decisions);
+        const bv = compareColumnText(b, compareColumnSort.key, decisions);
+        const an = Number(av);
+        const bn = Number(bv);
+        if (Number.isFinite(an) && Number.isFinite(bn)) return (an - bn) * dir;
+        return String(av || "").localeCompare(String(bv || ""), "zh-CN") * dir;
+      });
+    }
+
+    function compareColumnCounts(rows, def, decisions) {
+      const map = new Map();
+      for (const row of rows) {
+        const value = compareColumnText(row, def.key, decisions) || "—";
+        map.set(value, (map.get(value) || 0) + 1);
+      }
+      return Array.from(map.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN"));
+    }
+
+    function renderCompareHeaderCell(key) {
+      const def = compareColumnDefByKey(key);
+      const picked = compareColumnFilters[key];
+      const count = picked && picked.size ? picked.size : "";
+      const mark = compareColumnSort.key === key ? compareColumnSort.direction : "";
+      return `<th class="sort-filter-th" data-column-key="${esc(key)}"><div class="th-wrap"><button class="th-sort" type="button"><span>${esc(def ? def.label : key)}</span><span class="sort-mark ${esc(mark)}"></span></button><button class="th-filter ${count ? "active" : ""}" type="button" data-count="${esc(count)}" aria-label="筛选${esc(def ? def.label : key)}"></button></div></th>`;
+    }
+
+    function ensureCompareColumnPopover() {
+      let pop = document.getElementById("compareColumnFilterPopover");
+      if (!pop) {
+        pop = document.createElement("div");
+        pop.id = "compareColumnFilterPopover";
+        pop.className = "col-popover";
+        document.body.appendChild(pop);
+      }
+      return pop;
+    }
+
+    function closeCompareColumnPopover() {
+      compareOpenFilterKey = "";
+      const pop = ensureCompareColumnPopover();
+      pop.classList.remove("open");
+      pop.innerHTML = "";
+    }
+
+    function renderCompareColumnPopover(def, anchor, decisions) {
+      const pop = ensureCompareColumnPopover();
+      const opts = compareColumnCounts(compareHeaderBaseRows, def, decisions);
+      const picked = compareColumnFilters[def.key] || new Set();
+      compareOpenFilterKey = def.key;
+      const optionHtml = (items) => items.map(([value, count]) => `
+        <div class="pop-option">
+          <label title="${esc(value)}"><input type="checkbox" class="pop-check" data-value="${esc(value)}" ${picked.has(value) ? "checked" : ""} /><span class="pop-value">${esc(value)}</span></label>
+          <span class="pop-count">${count}</span>
+        </div>
+      `).join("");
+      pop.innerHTML = `
+        <div class="pop-head">
+          <div class="pop-title">${esc(def.label)}筛选（${picked.size || 0}/${opts.length || 0}）</div>
+          <input class="pop-search" type="search" placeholder="输入筛选项..." />
+          <div class="pop-actions"><button class="pop-btn" type="button" data-action="all">全选</button><button class="pop-btn" type="button" data-action="clear">清空</button><button class="pop-btn" type="button" data-action="close">关闭</button></div>
+        </div>
+        <div class="pop-options">${optionHtml(opts)}</div>
+      `;
+      const rect = anchor.getBoundingClientRect();
+      const width = 290;
+      pop.style.left = `${Math.min(Math.max(10, rect.right - width), window.innerWidth - width - 10)}px`;
+      pop.style.top = `${Math.max(10, Math.min(rect.bottom + 6, window.innerHeight - 430))}px`;
+      pop.classList.add("open");
+      const bindChecks = () => pop.querySelectorAll(".pop-check").forEach((input) => {
+        input.addEventListener("change", () => {
+          const set = compareColumnFilters[def.key] || new Set();
+          if (input.checked) set.add(input.dataset.value || "—");
+          else set.delete(input.dataset.value || "—");
+          compareColumnFilters[def.key] = set;
+          renderCompareResult(lastCompareData);
+        });
+      });
+      pop.querySelector(".pop-search").addEventListener("input", (ev) => {
+        const keyword = String(ev.target.value || "").toLowerCase();
+        const filtered = keyword ? opts.filter(([value]) => String(value).toLowerCase().includes(keyword)) : opts;
+        pop.querySelector(".pop-options").innerHTML = optionHtml(filtered);
+        bindChecks();
+      });
+      pop.querySelectorAll(".pop-btn").forEach((btn) => btn.addEventListener("click", () => {
+        const action = btn.dataset.action;
+        if (action === "all") compareColumnFilters[def.key] = new Set(opts.map(([v]) => v));
+        if (action === "clear") compareColumnFilters[def.key] = new Set();
+        if (action === "close") { closeCompareColumnPopover(); return; }
+        renderCompareResult(lastCompareData);
+      }));
+      bindChecks();
+    }
+
+    function bindCompareHeaderInteractions(decisions) {
+      compareResult.querySelectorAll("th.sort-filter-th").forEach((th) => {
+        const key = th.dataset.columnKey;
+        const def = compareColumnDefByKey(key);
+        th.querySelector(".th-sort")?.addEventListener("click", () => {
+          if (compareColumnSort.key === key) compareColumnSort.direction = compareColumnSort.direction === "asc" ? "desc" : "asc";
+          else compareColumnSort = { key, direction: "asc" };
+          renderCompareResult(lastCompareData);
+        });
+        th.querySelector(".th-filter")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (!def) return;
+          if (compareOpenFilterKey === key && ensureCompareColumnPopover().classList.contains("open")) closeCompareColumnPopover();
+          else renderCompareColumnPopover(def, ev.currentTarget, decisions);
+        });
+      });
+      if (!window.__compareColumnPopoverBound) {
+        document.addEventListener("click", (ev) => {
+          const pop = ensureCompareColumnPopover();
+          if (!pop.classList.contains("open")) return;
+          if (pop.contains(ev.target) || ev.target.closest(".th-filter")) return;
+          closeCompareColumnPopover();
+        });
+        window.__compareColumnPopoverBound = true;
+      }
     }
 
     let compareSelectedUid = "";
@@ -1940,27 +2168,30 @@
       lastCompareData = data;
       const s = data.summary || {};
       const rows = prepareCompareRows(data.records || []);
-      const filteredRows = applyCompareDetailFilters(compareRowsByFilter(rows, compareFilter));
-      const displayRows = filteredRows.slice(0, 800);
       const decisions = readCompareDecisions(data);
+      const detailRows = applyCompareDetailFilters(compareRowsByFilter(rows, compareFilter));
+      compareHeaderBaseRows = detailRows;
+      const filteredRows = sortCompareRows(applyCompareColumnFilters(detailRows, decisions), decisions);
+      const displayRows = filteredRows.slice(0, 800);
       saveCompareState(data, filteredRows);
       compareResult.innerHTML = `
         ${renderCompareFilters(s)}
         ${renderCompareDetailFilters()}
+        ${compareColumnFilterSummary()}
         ${renderDecisionBar(data, rows)}
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>状态</th>
-                <th>风险</th>
-                <th>编号</th>
-                <th>姓名</th>
-                <th>身份证号</th>
-                <th>截图时间</th>
-                <th>基础信息差异</th>
-                <th>任职明细差异</th>
-                <th>裁决</th>
+                ${renderCompareHeaderCell("status")}
+                ${renderCompareHeaderCell("severity")}
+                ${renderCompareHeaderCell("record_id")}
+                ${renderCompareHeaderCell("name")}
+                ${renderCompareHeaderCell("masked_id")}
+                ${renderCompareHeaderCell("capture")}
+                ${renderCompareHeaderCell("basic")}
+                ${renderCompareHeaderCell("employment")}
+                ${renderCompareHeaderCell("decision")}
                 <th class="right">操作</th>
               </tr>
             </thead>
@@ -1992,6 +2223,7 @@
           详情页只比较共识后的结构化结果，图片仅作为核验预览。
         </div>
       `;
+      bindCompareHeaderInteractions(decisions);
       const submit = compareResult.querySelector("#submitBaselineUpdate");
       submit && submit.addEventListener("click", () => submitBaselineUpdate(data));
       compareResult.querySelectorAll("[data-compare-filter]").forEach((btn) => {
@@ -2038,6 +2270,8 @@
       const clear = compareResult.querySelector("#compareClearFilters");
       clear && clear.addEventListener("click", () => {
         compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false };
+        compareColumnFilters = {};
+        compareColumnSort = { key: "", direction: "asc" };
         renderCompareResult(lastCompareData);
       });
     }
@@ -2062,6 +2296,8 @@
         if (!res.ok) throw new Error(data.detail || "比对失败");
         compareFilter = "review";
         compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false };
+        compareColumnFilters = {};
+        compareColumnSort = { key: "", direction: "asc" };
         renderCompareResult(data);
       } catch (err) {
         compareResult.innerHTML = `<div class="empty">${esc(err.message || String(err))}</div>`;

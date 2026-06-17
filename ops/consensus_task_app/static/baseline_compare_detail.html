@@ -99,6 +99,13 @@
     .compare-cell.changed .box.base { background: #FFF8E9; border-color: #E9D9B8; }
     .compare-cell.changed .box.curr { background: #FFF1EE; border-color: #EAC8C1; }
     .compare-cell.same .box { background: #F4FAF6; border-color: #CFE3D6; }
+    button.value-box { width: 100%; text-align: left; font: inherit; cursor: pointer; }
+    .decision-choice { position: relative; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease; }
+    .decision-choice.active { border-color: var(--primary); background: var(--primary-soft); box-shadow: inset 0 0 0 2px rgba(127,157,140,.28); }
+    .decision-choice.active::after { content: "已选"; position: absolute; right: 7px; top: 6px; color: var(--primary-strong); font-size: 10px; font-weight: 900; }
+    .field-decision-tools { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+    .decision-mini { border: 1px solid #D8DED4; background: #fff; color: var(--muted); border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 900; cursor: pointer; }
+    .decision-mini.active { border-color: #BFD8CA; background: var(--primary-soft); color: var(--primary-strong); }
     .value-box { border: 1px solid var(--line-soft); border-radius: 10px; padding: 7px 8px; background: var(--paper); overflow-wrap: anywhere; min-height: 34px; font-weight: 760; }
     .value-box.base { background: #FFF8E9; border-color: #E9D9B8; }
     .value-box.curr { background: #F4FAF6; border-color: #CFE3D6; }
@@ -317,6 +324,22 @@
       const v = value === undefined || value === null || value === "" ? "—" : value;
       return `<div class="value-box ${esc(side)} ${changed ? "changed" : ""}">${esc(v)}</div>`;
     }
+    function decisionValueCell(value, side, changed, decisionMeta, action, selected) {
+      if (!decisionMeta) return valueCell(value, side, changed);
+      const v = value === undefined || value === null || value === "" ? "—" : value;
+      return `<button type="button" class="value-box ${esc(side)} ${changed ? "changed" : ""} decision-choice ${selected === action ? "active" : ""}" data-decision-action="${esc(action)}">${esc(v)}</button>`;
+    }
+    function fieldDecisionCell(name, decisionMeta, selected) {
+      if (!decisionMeta || decisionMeta.allowManual === false) return esc(name);
+      const saved = currentDecision(decisionMeta.kind, decisionMeta.key);
+      return `
+        <div>${esc(name)}</div>
+        <div class="field-decision-tools">
+          <button type="button" class="decision-mini ${selected === "manual" ? "active" : ""}" data-decision-action="manual">手工</button>
+          <input class="decision-input" data-decision-manual="${esc(decisionMeta.kind)}:${esc(decisionMeta.key)}" value="${esc(saved.value || "")}" placeholder="手工值" style="display:${selected === "manual" ? "block" : "none"};" />
+        </div>
+      `;
+    }
     function statusPill(a, b, kind = "") {
       const same = String(a || "") === String(b || "");
       if (kind === "capture") {
@@ -352,16 +375,16 @@
     function compareRow(name, baselineValue, currentValue, kind = "", decisionMeta = null) {
       const same = String(baselineValue || "") === String(currentValue || "");
       const capture = kind === "capture";
-      const decision = !same && !capture && decisionMeta
-        ? inlineDecisionControl(decisionMeta.kind, decisionMeta.key, decisionMeta.allowManual !== false)
-        : `<span class="muted">—</span>`;
+      const needsDecision = !same && !capture && decisionMeta;
+      const saved = needsDecision ? currentDecision(decisionMeta.kind, decisionMeta.key) : {};
+      const selected = saved.action || "";
+      const scope = needsDecision ? (decisionMeta.kind === "basic" ? "basic" : "employment") : "";
       return `
-        <tr>
-          <td>${esc(name)}</td>
-          <td>${valueCell(baselineValue, "base", !same && !capture)}</td>
-          <td>${valueCell(currentValue, "curr", !same && !capture)}</td>
+        <tr class="${needsDecision ? "decision-control" : ""}" ${needsDecision ? `data-decision-kind="${esc(decisionMeta.kind)}" data-decision-key="${esc(decisionMeta.key)}" data-decision-scope="${esc(scope)}" data-selected-action="${esc(selected)}"` : ""}>
+          <td>${fieldDecisionCell(name, needsDecision ? decisionMeta : null, selected)}</td>
+          <td>${decisionValueCell(baselineValue, "base", !same && !capture, needsDecision ? decisionMeta : null, "keep_baseline", selected)}</td>
+          <td>${decisionValueCell(currentValue, "curr", !same && !capture, needsDecision ? decisionMeta : null, "accept_current", selected)}</td>
           <td>${statusPill(baselineValue, currentValue, kind)}</td>
-          <td>${decision}</td>
         </tr>
       `;
     }
@@ -394,7 +417,7 @@
         <section class="panel">
           <h2 class="with-actions"><span>基础信息</span><span class="section-actions"><button type="button" data-fill-scope="basic" data-fill-field-decisions="keep_baseline">全保留</button><button type="button" data-fill-scope="basic" data-fill-field-decisions="accept_current">全采用</button></span></h2>
           <table>
-            <thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th><th>裁决</th></tr></thead>
+            <thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead>
             <tbody>${fields.map(([k, a, b, kind]) => compareRow(k, a, b, kind, { kind: "basic", key: k })).join("")}</tbody>
           </table>
         </section>
@@ -473,7 +496,7 @@
       const b = pair.baseline || {};
       const c = pair.current || {};
       const fields = [["企业名称", b.company_name, c.company_name], ["经营状态", b.business_status, c.business_status], ["承担职务", b.role, c.role], ["持股比例", b.share_ratio, c.share_ratio]];
-      return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th><th>裁决</th></tr></thead><tbody>${fields.map(([k, a, b]) => compareRow(k, a, b, "", { kind: "employment_field", key: `${pairIndex}:${k}` })).join("")}</tbody></table></div>`;
+      return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead><tbody>${fields.map(([k, a, b]) => compareRow(k, a, b, "", { kind: "employment_field", key: `${pairIndex}:${k}` })).join("")}</tbody></table></div>`;
     }
     function employmentSection() {
       if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") return oneSideEmployment();
@@ -612,15 +635,15 @@
       const seed = esc(JSON.stringify(manualFieldsSeed(), null, 2));
       const currentDisabled = row.match_status === "unmatched_missing" ? "" : "";
       const existing = readCompareDecisions()[String(idx)];
-      const existingText = existing ? `当前已选择：${existing.action === "accept_current" ? "采用本次" : existing.action === "manual" ? "手工修正" : existing.action === "field_decisions" ? "字段裁决" : "保留基线"}` : "当前尚未裁决。";
+      const existingText = existing ? `当前已选择：${existing.action === "accept_current" ? "采用本次" : existing.action === "manual" ? "手工修正" : existing.action === "field_decisions" ? "已裁决" : "保留基线"}` : "当前尚未裁决。";
       if (row.match_status === "matched") {
         return `
           <section class="panel">
-            <h2>保存裁决</h2>
+            <h2>保存选择</h2>
             <div class="decision-panel">
-              <div class="decision-status">${existing ? "当前记录已有字段裁决，可直接在上方差异行继续修改。" : "只需要处理上方不一致的业务字段；一致字段会自动沿用基线。"}保存后返回比对列表，最后在列表页统一提交真实基线更新。</div>
+              <div class="decision-status">${existing ? "当前记录已有已裁决，可直接在上方差异行继续修改。" : "只需要处理上方不一致的业务字段；一致字段会自动沿用基线。"}保存后返回比对列表，最后在列表页统一提交真实基线更新。</div>
               <div class="decision-actions">
-                <button class="btn" type="button" data-save-field-decisions>保存字段裁决</button>
+                <button class="btn" type="button" data-save-field-decisions>保存裁决</button>
               </div>
               <div id="decisionStatus" class="decision-status">未保存。</div>
             </div>
@@ -657,7 +680,7 @@
         const kind = control.dataset.decisionKind;
         const key = control.dataset.decisionKey;
         const action = control.dataset.selectedAction || "";
-        if (!action) throw new Error("还有字段未选择裁决方式。");
+        if (!action) throw new Error("还有差异项未选择保留基线、本次或手工修正。");
         const manualInput = control.querySelector("[data-decision-manual]");
         const value = manualInput ? manualInput.value : "";
         if (action === "manual" && !String(value || "").trim()) throw new Error("手工修正字段必须填写手工值。");
@@ -673,7 +696,7 @@
       try {
         const payload = collectFieldDecisions();
         writeCompareDecision({ idx, action: "field_decisions", ...payload, decided_at: new Date().toISOString() });
-        status.textContent = "字段裁决已保存，正在返回列表。";
+        status.textContent = "已裁决已保存，正在返回列表。";
         location.href = backHref();
       } catch (err) {
         status.textContent = err.message || String(err);
@@ -694,7 +717,7 @@
         selectDecisionControl(control, action);
       });
       const status = $("decisionStatus");
-      if (status) status.textContent = action === "accept_current" ? "已选择全部采用本次，确认后请保存字段裁决。" : "已选择全部保留基线，确认后请保存字段裁决。";
+      if (status) status.textContent = action === "accept_current" ? "已选择全部采用本次，确认后请保存裁决。" : "已选择全部保留基线，确认后请保存裁决。";
     }
     async function applyBaselineDecision(action) {
       const status = $("decisionStatus");
