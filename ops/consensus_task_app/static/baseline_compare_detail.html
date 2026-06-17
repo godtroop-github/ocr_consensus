@@ -120,12 +120,14 @@
     .company-fields table { border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; background: #fff; }
     .image-panel { min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,.94); overflow: hidden; box-shadow: var(--shadow); }
     .image-panel h2 { margin: 0; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); background: rgba(243,240,232,.50); font-size: 13px; font-weight: 720; overflow-wrap: anywhere; }
-    .image-frame { flex: 1; min-height: 320px; display: grid; place-items: end center; background: #F2EFE7; overflow: auto; }
-    .image-frame img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; cursor: zoom-in; }
+    .image-frame { flex: 1; min-height: 320px; display: grid; place-items: start center; background: #F2EFE7; overflow: auto; }
+    .image-frame img { width: 100%; height: 100%; object-fit: contain; object-position: center top; cursor: zoom-in; }
     .image-frame img.zoomed { width: auto; height: auto; max-width: 100%; max-height: none; cursor: zoom-out; }
     .image-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line-soft); background: var(--paper); }
     .icon { width: 28px; height: 28px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 999px; background: #fff; cursor: pointer; color: var(--primary-strong); font-weight: 900; }
     .icon:disabled { opacity: .35; cursor: not-allowed; }
+    .source-line { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .source-badge { display: inline-flex; align-items: center; max-width: 100%; padding: 3px 7px; border: 1px solid var(--line-soft); border-radius: 999px; background: #FFFDF8; color: var(--muted); font-size: 11px; font-weight: 680; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .empty { padding: 30px; text-align: center; color: var(--muted); }
     .note { padding: 10px 12px; color: var(--muted); font-size: 12px; line-height: 1.55; border-top: 1px solid var(--line-soft); background: rgba(255,253,248,.70); }
     @media (max-width: 1120px) {
@@ -369,19 +371,42 @@
       return ["company_name", "business_status", "role", "share_ratio"].some(k => String(pair.baseline[k] || "") !== String(pair.current[k] || "")) ? ["变化", "bad"] : ["一致", "ok"];
     }
     function companySub(r) { return r ? [r.business_status, r.role, r.share_ratio].filter(Boolean).join(" · ") : ""; }
+    function taskName(side) {
+      if (side === "baseline") {
+        return (compareData.baseline && (compareData.baseline.source_task_name || compareData.baseline.source_task_id || compareData.baseline.name || compareData.baseline.id)) || "基线来源任务";
+      }
+      return (compareData.task && (compareData.task.name || compareData.task.id)) || "本次任务";
+    }
+    function sourceTip(r, side) {
+      if (!r) return "";
+      return [
+        `任务：${taskName(side)}`,
+        `来源图片：${r.source_image || "—"}`,
+        `共识企业：${r.company_name || "未识别企业"}`,
+        `经营状态：${r.business_status || "—"}`,
+        `承担职务：${r.role || "—"}`,
+        `持股比例：${r.share_ratio || "—"}`,
+      ].join("\n");
+    }
+    function sourceBadge(r, side) {
+      if (!r) return "";
+      const image = r.source_image || "—";
+      return `<span class="source-badge" title="${esc(sourceTip(r, side))}">${esc(side === "baseline" ? "基线来源" : "本次来源")}：${esc(taskName(side))} / ${esc(image)}</span>`;
+    }
     function oneSideEmployment() {
       const rows = row.match_status === "unmatched_new" ? row.current_employment || [] : row.baseline_employment || [];
+      const side = row.match_status === "unmatched_new" ? "current" : "baseline";
       return `
         <section class="panel">
           <h2>任职明细</h2>
-          ${rows.length ? `<table><thead><tr><th>企业名称</th><th>经营状态</th><th>承担职务</th><th>持股比例</th><th>来源图片</th></tr></thead><tbody>${rows.map(e => `<tr><td><strong>${esc(e.company_name || "未识别企业")}</strong></td><td>${esc(e.business_status || "—")}</td><td>${esc(e.role || "—")}</td><td>${esc(e.share_ratio || "—")}</td><td class="mono">${esc(e.source_image || "—")}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">无任职企业明细。</div>`}
+          ${rows.length ? `<table><thead><tr><th>企业名称</th><th>经营状态</th><th>承担职务</th><th>持股比例</th><th>证据</th></tr></thead><tbody>${rows.map(e => `<tr><td><strong>${esc(e.company_name || "未识别企业")}</strong></td><td>${esc(e.business_status || "—")}</td><td>${esc(e.role || "—")}</td><td>${esc(e.share_ratio || "—")}</td><td>${sourceBadge(e, side)}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">无任职企业明细。</div>`}
         </section>
       `;
     }
     function companyFieldCompare(pair) {
       const b = pair.baseline || {};
       const c = pair.current || {};
-      const fields = [["企业名称", b.company_name, c.company_name], ["经营状态", b.business_status, c.business_status], ["承担职务", b.role, c.role], ["持股比例", b.share_ratio, c.share_ratio], ["来源图片", b.source_image, c.source_image]];
+      const fields = [["企业名称", b.company_name, c.company_name], ["经营状态", b.business_status, c.business_status], ["承担职务", b.role, c.role], ["持股比例", b.share_ratio, c.share_ratio]];
       return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead><tbody>${fields.map(([k, a, b]) => compareRow(k, a, b)).join("")}</tbody></table></div>`;
     }
     function employmentSection() {
@@ -394,7 +419,7 @@
             const [label, cls] = companyStatus(p);
             const b = p.baseline || {};
             const c = p.current || {};
-            return `<details class="company" ${cls !== "ok" ? "open" : ""}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name || "—")}<small>${esc(companySub(b))}</small></div><div class="arr">→</div><div class="company-name">${esc(c.company_name || "—")}<small>${esc(companySub(c))}</small></div></div><span class="diff-status ${cls}">${esc(label)}</span></summary>${companyFieldCompare(p)}</details>`;
+            return `<details class="company" ${cls !== "ok" ? "open" : ""}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name || "—")}<small>${esc(companySub(b))}</small><div class="source-line">${sourceBadge(p.baseline, "baseline")}</div></div><div class="arr">→</div><div class="company-name">${esc(c.company_name || "—")}<small>${esc(companySub(c))}</small><div class="source-line">${sourceBadge(p.current, "current")}</div></div></div><span class="diff-status ${cls}">${esc(label)}</span></summary>${companyFieldCompare(p)}</details>`;
           }).join("")}</div>` : `<div class="empty">无任职企业明细。</div>`}
         </section>
       `;
