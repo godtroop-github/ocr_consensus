@@ -574,6 +574,279 @@ class BaselineStore:
 
         return self.get_baseline(baseline_id, include_records=False)
 
+    def create_updated_from_compare(
+        self,
+        baseline_id: str,
+        task: Dict[str, Any],
+        decisions: List[Dict[str, Any]],
+        name: str = "",
+        baseline_type: str = "golden",
+        notes: str = "",
+        created_by: str = "",
+    ) -> Dict[str, Any]:
+        self.init_db()
+        baseline_type = _to_text(baseline_type) or "golden"
+        if baseline_type not in BASELINE_TYPES:
+            raise BaselineError(f"unsupported baseline type: {baseline_type}")
+        compare = self.compare_task_to_baseline(baseline_id, task)
+        parent = self.get_baseline(baseline_id, include_records=False)
+        decision_by_idx: Dict[int, Dict[str, Any]] = {}
+        for item in decisions or []:
+            try:
+                idx = int(item.get("idx"))
+            except Exception:
+                continue
+            decision_by_idx[idx] = item
+
+        new_baseline_id = datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:8]
+        baseline_name = name.strip() or f"{parent.get('name') or baseline_id} updated"
+        task_id = _to_text(task.get("id"))
+        task_name = _to_text(task.get("name"))
+        record_rows: List[tuple] = []
+        employment_inserts: List[tuple] = []
+        action_rows: List[tuple] = []
+        selected_count = 0
+
+        def selected_record_from_diff(diff: Dict[str, Any], decision: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], str]:
+            action = _to_text(decision.get("action")) or "keep_baseline"
+            if diff.get("match_status") == "unmatched_new":
+                if action in {"accept_current", "manual"}:
+                    return dict(diff.get("current") or {}), list(diff.get("current_employment") or []), action
+                return None, [], "ignore_new"
+            if diff.get("match_status") == "unmatched_missing":
+                if action in {"accept_current", "remove"}:
+                    return None, [], "remove_missing"
+                return dict(diff.get("baseline") or {}), list(diff.get("baseline_employment") or []), action or "keep_baseline"
+            if action in {"accept_current", "manual"}:
+                return dict(diff.get("current") or {}), list(diff.get("current_employment") or []), action
+            return dict(diff.get("baseline") or {}), list(diff.get("baseline_employment") or []), action or "keep_baseline"
+
+        for idx, diff in enumerate(compare.get("records") or []):
+            decision = decision_by_idx.get(idx, {})
+            record, employment_rows, effective_action = selected_record_from_diff(diff, decision)
+            if idx in decision_by_idx:
+                selected_count += 1
+            if record is None:
+                continue
+            manual_fields = decision.get("fields") if isinstance(decision.get("fields"), dict) else {}
+            if effective_action == "manual" and manual_fields:
+                self._apply_manual_fields(record, manual_fields)
+            record_index = len(record_rows) + 1
+            record_id = f"{new_baseline_id}_r{record_index:06d}"
+            fields = self._fields_from_public_record(record)
+            support = self._updated_support(diff, record, task, effective_action)
+            evidence = {
+                "parent_baseline_id": baseline_id,
+                "decision": effective_action,
+                "source_task_id": task_id,
+                "source_task_name": task_name,
+                "support": support,
+                "manual_fields": manual_fields if effective_action == "manual" else {},
+            }
+            record_rows.append(
+                (
+                    record_id,
+                    new_baseline_id,
+                    record_index,
+                    _to_text(record.get("record_key")) or _record_key(
+                        _to_text(record.get("file_id")),
+                        _to_text(record.get("person_name")),
+                        _to_text(record.get("masked_id")),
+                        _to_text(record.get("file_name")),
+                    ),
+                    _to_text(record.get("file_id")),
+                    _to_text(record.get("file_name")),
+                    _extract_filename_name(record.get("file_name")),
+                    _to_text(record.get("person_name")),
+                    _to_text(record.get("masked_id")),
+                    _to_text(record.get("capture_date")),
+                    _to_text(record.get("capture_time")),
+                    " ".join(x for x in [_to_text(record.get("capture_date")), _to_text(record.get("capture_time"))] if x),
+                    _to_text(record.get("related_count")),
+                    _to_text(record.get("employment_count")),
+                    _to_text(record.get("shareholding_count")),
+                    f"baseline_{effective_action}",
+                    _json_dumps(fields),
+                    _json_dumps(evidence),
+                )
+            )
+            for employment in employment_rows:
+                emp_idx = len(employment_inserts) + 1
+                company_name = _to_text(employment.get("company_name")) or "未识别企业"
+                emp_evidence = dict(employment.get("evidence_summary") or {})
+                emp_evidence.update(
+                    {
+                        "parent_baseline_id": baseline_id,
+                        "decision": effective_action,
+                        "source_task_id": task_id,
+                        "source_task_name": task_name,
+                    }
+                )
+                employment_inserts.append(
+                    (
+                        f"{new_baseline_id}_e{emp_idx:06d}",
+                        new_baseline_id,
+                        record_id,
+                        emp_idx,
+                        _to_text(employment.get("company_key")) or _normalize_company_key(company_name),
+                        company_name,
+                        _to_text(employment.get("business_status")),
+                        _to_text(employment.get("role")),
+                        _to_text(employment.get("share_ratio")),
+                        _to_text(employment.get("source_image")),
+                        _to_text(employment.get("row_status")) or "baseline_selected",
+                        _json_dumps(emp_evidence),
+                    )
+                )
+
+        if not record_rows:
+            raise BaselineError("no records selected for updated baseline")
+
+        metadata = {
+            "kind": "truth_baseline_update",
+            "parent_baseline_id": baseline_id,
+            "source_task": {
+                "id": task.get("id"),
+                "name": task.get("name"),
+                "created_at": task.get("created_at"),
+                "completed_at": task.get("completed_at"),
+                "dashboard_url": task.get("dashboard_url"),
+            },
+            "decision_count": len(decision_by_idx),
+            "selected_decision_count": selected_count,
+            "strategy": "manual_truth_baseline_update",
+        }
+
+        with self.connect() as conn:
+            if baseline_type == "golden":
+                conn.execute("UPDATE baseline_versions SET is_active_golden = 0 WHERE is_active_golden = 1")
+            conn.execute(
+                """
+                INSERT INTO baseline_versions (
+                    id, name, type, parent_id, source_task_id, source_task_name, status,
+                    is_active_golden, record_count, image_count, created_at, created_by,
+                    code_version, harness_version, engine_versions, metadata, notes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    new_baseline_id,
+                    baseline_name,
+                    baseline_type,
+                    baseline_id,
+                    _to_text(parent.get("source_task_id")),
+                    _to_text(parent.get("source_task_name")),
+                    "active",
+                    1 if baseline_type == "golden" else 0,
+                    len(record_rows),
+                    int(parent.get("image_count") or task.get("files_total") or 0),
+                    _now(),
+                    created_by,
+                    "",
+                    "manual_truth_baseline_update",
+                    _json_dumps({}),
+                    _json_dumps(metadata),
+                    notes,
+                ),
+            )
+            conn.executemany(
+                """
+                INSERT INTO baseline_records (
+                    id, baseline_id, record_index, record_key, file_id, file_name,
+                    file_name_from_filename, person_name, masked_id, capture_date,
+                    capture_time, capture_datetime, related_count, employment_count,
+                    shareholding_count, review_status, fields, evidence_summary
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                record_rows,
+            )
+            if employment_inserts:
+                conn.executemany(
+                    """
+                    INSERT INTO baseline_employment_rows (
+                        id, baseline_id, baseline_record_id, row_index, company_key,
+                        company_name, business_status, role, share_ratio, source_image,
+                        row_status, evidence_summary
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    employment_inserts,
+                )
+            for idx, decision in decision_by_idx.items():
+                action_rows.append(
+                    (
+                        uuid.uuid4().hex,
+                        "baseline_version",
+                        new_baseline_id,
+                        _to_text(decision.get("action")) or "keep_baseline",
+                        baseline_id,
+                        new_baseline_id,
+                        _to_text(decision.get("reason") or notes),
+                        created_by,
+                        _now(),
+                    )
+                )
+            if action_rows:
+                conn.executemany(
+                    """
+                    INSERT INTO manual_review_actions (
+                        id, target_type, target_id, action, old_value, new_value,
+                        reason, operator, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    action_rows,
+                )
+
+        return self.get_baseline(new_baseline_id, include_records=False)
+
+    def _apply_manual_fields(self, record: Dict[str, Any], fields: Dict[str, Any]) -> None:
+        mapping = {
+            "姓名": "person_name",
+            "身份证号": "masked_id",
+            "截图日期": "capture_date",
+            "截图时间": "capture_time",
+            "相关企业": "related_count",
+            "任职": "employment_count",
+            "参股": "shareholding_count",
+            "person_name": "person_name",
+            "masked_id": "masked_id",
+            "capture_date": "capture_date",
+            "capture_time": "capture_time",
+            "related_count": "related_count",
+            "employment_count": "employment_count",
+            "shareholding_count": "shareholding_count",
+        }
+        for key, target in mapping.items():
+            if key in fields:
+                record[target] = _to_text(fields.get(key))
+
+    def _fields_from_public_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "姓名": _to_text(record.get("person_name")),
+            "身份证号": _to_text(record.get("masked_id")),
+            "截图日期": _to_text(record.get("capture_date")),
+            "截图时间": _to_text(record.get("capture_time")),
+            "相关企业": _to_text(record.get("related_count")),
+            "任职": _to_text(record.get("employment_count")),
+            "参股": _to_text(record.get("shareholding_count")),
+        }
+
+    def _updated_support(self, diff: Dict[str, Any], record: Dict[str, Any], task: Dict[str, Any], action: str) -> Dict[str, Any]:
+        baseline = diff.get("baseline") or {}
+        current = diff.get("current") or {}
+        same_business = False
+        if baseline and current:
+            same_business = self._business_field_values(baseline) == self._business_field_values(current)
+        return {
+            "action": action,
+            "same_business_observation": same_business,
+            "source_task_id": task.get("id"),
+            "source_task_name": task.get("name"),
+            "selected_record_key": record.get("record_key"),
+        }
+
     def _compare_records_from_task(self, task_dir: Path) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         for idx, rec in enumerate(self._load_task_records(task_dir), start=1):
