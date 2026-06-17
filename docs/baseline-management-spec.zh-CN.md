@@ -845,7 +845,7 @@ Excel 导出默认设计：
 
 暂不包含：
 
-1. 基线 diff。
+1. 任职明细 diff。
 2. 差异列表 UI。
 3. Excel 导出。
 4. candidate/golden 生成闭环。
@@ -856,6 +856,7 @@ Excel 导出默认设计：
 POST /api/tasks/{task_id}/baseline
 GET  /api/baselines
 GET  /api/baselines/{baseline_id}
+POST /api/compare
 ```
 
 当前可测试页面：
@@ -864,4 +865,20 @@ GET  /api/baselines/{baseline_id}
 /                       处理台，进入任务结果和基线管理
 /runs/{task}/dashboard  结果列表页，人工复核后保存基线
 /baselines              基线管理页，查看基线列表和详情
+```
+
+当前基础比对能力：
+
+1. 支持当前任务与指定 baseline 做即时比对。
+2. 记录匹配优先级：`record_key`、`文件编号+姓名`、`身份证号+姓名`、`文件编号`。
+3. 业务字段先覆盖：姓名、身份证号、相关企业、任职、参股。
+4. 截图日期时间作为采集时间弱差异，不默认进入主业务差异。
+5. 输出记录级 summary、字段级 diff、严重等级和是否需要复核。
+
+当前比对 API 示例：
+
+```bash
+curl -X POST http://127.0.0.1:8090/api/compare \
+  -H 'Content-Type: application/json' \
+  -d '{"baseline_id":"<baseline_id>","task_id":"<task_id>"}'
 ```

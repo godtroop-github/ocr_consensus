@@ -2079,6 +2079,24 @@ async def get_baseline(baseline_id: str):
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+@app.post("/api/compare")
+async def compare_with_baseline(payload: Optional[Dict[str, Any]] = Body(default=None)):
+    payload = payload or {}
+    baseline_id = str(payload.get("baseline_id") or "").strip()
+    task_id = str(payload.get("task_id") or "").strip()
+    if not baseline_id:
+        raise HTTPException(status_code=400, detail="baseline_id is required")
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is required")
+    task = TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+    try:
+        return BASELINE_STORE.compare_task_to_baseline(baseline_id, task)
+    except BaselineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: str):
     task = TASKS.get(task_id)

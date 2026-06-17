@@ -10,6 +10,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 
 BASELINE_TYPES = {"snapshot", "candidate", "golden"}
+BUSINESS_FIELDS = ["姓名", "身份证号", "相关企业", "任职", "参股"]
+COUNT_FIELDS = {"相关企业", "任职", "参股"}
 
 
 class BaselineError(ValueError):
@@ -102,6 +104,34 @@ def _normalize_company_key(company: Any) -> str:
     value = _to_text(company)
     value = re.sub(r"[\s|,，.。．…·、:：;；()（）\[\]【】<>《》\"'“”‘’_-]+", "", value)
     return value.replace("有限责任公司", "有限公司")
+
+
+def _normalize_count(value: Any) -> str:
+    text = _to_text(value)
+    if text == "":
+        return ""
+    m = re.search(r"-?\d+", text)
+    return m.group(0) if m else text
+
+
+def _normalize_field_value(field: str, value: Any) -> str:
+    if field in COUNT_FIELDS:
+        return _normalize_count(value)
+    return _to_text(value)
+
+
+def _capture_tuple(date_value: Any, time_value: Any) -> Optional[tuple[int, int, int, int]]:
+    date_text = _to_text(date_value).replace("/", "-").replace("－", "-")
+    time_text = _to_text(time_value).replace("：", ":")
+    dm = re.fullmatch(r"(\d{2})-(\d{2})", date_text)
+    tm = re.fullmatch(r"(\d{2}):(\d{2})", time_text)
+    if not dm or not tm:
+        return None
+    month, day = int(dm.group(1)), int(dm.group(2))
+    hour, minute = int(tm.group(1)), int(tm.group(2))
+    if not (1 <= month <= 12 and 1 <= day <= 31 and 0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return month, day, hour, minute
 
 
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
@@ -248,6 +278,67 @@ class BaselineStore:
                 payload["records"] = [_row_to_dict(row) for row in records]
                 payload["employment_rows"] = [_row_to_dict(row) for row in employment]
         return payload
+
+    def compare_task_to_baseline(self, baseline_id: str, task: Dict[str, Any]) -> Dict[str, Any]:
+        self.init_db()
+        if task.get("status") != "completed":
+            raise BaselineError("only completed tasks can be compared with baseline")
+        baseline = self.get_baseline(baseline_id, include_records=True)
+        task_dir = Path(_to_text(task.get("output_dir")) or self.runs_root / _to_text(task.get("id")))
+        if not task_dir.exists():
+            raise BaselineError("task output directory not found")
+        current_records = self._compare_records_from_task(task_dir)
+        if not current_records:
+            raise BaselineError("task has no structured records to compare")
+
+        baseline_records = list(baseline.get("records") or [])
+        baseline_index: Dict[str, List[Dict[str, Any]]] = {}
+        for row in baseline_records:
+            for key in self._match_keys(row):
+                baseline_index.setdefault(key, []).append(row)
+
+        used_baseline_ids: set[str] = set()
+        diff_records: List[Dict[str, Any]] = []
+
+        for current in current_records:
+            matched = None
+            for key in self._match_keys(current):
+                candidates = baseline_index.get(key) or []
+                matched = next((row for row in candidates if row.get("id") not in used_baseline_ids), None)
+                if matched:
+                    break
+            if matched:
+                used_baseline_ids.add(_to_text(matched.get("id")))
+                diff_records.append(self._diff_record(matched, current, "matched"))
+            else:
+                diff_records.append(self._new_record_diff(current))
+
+        for baseline_record in baseline_records:
+            if _to_text(baseline_record.get("id")) in used_baseline_ids:
+                continue
+            diff_records.append(self._missing_record_diff(baseline_record))
+
+        summary = self._compare_summary(diff_records, baseline_records, current_records)
+        return {
+            "baseline": {
+                "id": baseline.get("id"),
+                "name": baseline.get("name"),
+                "type": baseline.get("type"),
+                "created_at": baseline.get("created_at"),
+                "record_count": baseline.get("record_count"),
+                "image_count": baseline.get("image_count"),
+            },
+            "task": {
+                "id": task.get("id"),
+                "name": task.get("name"),
+                "created_at": task.get("created_at"),
+                "completed_at": task.get("completed_at"),
+                "record_count": len(current_records),
+                "image_count": task.get("files_total"),
+            },
+            "summary": summary,
+            "records": diff_records,
+        }
 
     def create_from_task(
         self,
@@ -415,6 +506,254 @@ class BaselineStore:
                 )
 
         return self.get_baseline(baseline_id, include_records=False)
+
+    def _compare_records_from_task(self, task_dir: Path) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for idx, rec in enumerate(self._load_task_records(task_dir), start=1):
+            fields = self._consensus_fields(rec)
+            filename = _to_text(rec.get("filename") or rec.get("file_name"))
+            file_no = _to_text(rec.get("file_no")) or _extract_file_no(filename)
+            file_name_from_filename = _to_text(rec.get("file_name_from_filename")) or _extract_filename_name(filename)
+            person_name = _to_text(fields.get("姓名") or rec.get("person_name") or rec.get("姓名") or file_name_from_filename)
+            masked_id = _to_text(fields.get("身份证号") or rec.get("masked_id") or rec.get("身份证号"))
+            capture_date = _to_text(fields.get("截图日期") or rec.get("截图日期"))
+            capture_time = _to_text(fields.get("截图时间") or rec.get("截图时间"))
+            row = {
+                "id": f"current_r{idx:06d}",
+                "record_index": idx,
+                "record_key": _record_key(file_no, person_name, masked_id, filename),
+                "file_id": file_no,
+                "file_name": filename,
+                "file_name_from_filename": file_name_from_filename,
+                "person_name": person_name,
+                "masked_id": masked_id,
+                "capture_date": capture_date,
+                "capture_time": capture_time,
+                "capture_datetime": " ".join(x for x in [capture_date, capture_time] if x),
+                "related_count": _to_text(fields.get("相关企业") or rec.get("相关企业")),
+                "employment_count": _to_text(fields.get("任职") or rec.get("任职")),
+                "shareholding_count": _to_text(fields.get("参股") or rec.get("参股")),
+                "review_status": _to_text(rec.get("review_status")) or "unreviewed",
+                "fields": fields,
+                "evidence_summary": self._record_evidence(rec),
+            }
+            rows.append(row)
+        return rows
+
+    def _match_keys(self, row: Dict[str, Any]) -> List[str]:
+        keys: List[str] = []
+        record_key = _to_text(row.get("record_key"))
+        file_id = _to_text(row.get("file_id"))
+        person_name = _to_text(row.get("person_name"))
+        masked_id = _to_text(row.get("masked_id"))
+        if record_key:
+            keys.append(f"record:{record_key}")
+        if file_id and person_name:
+            keys.append(f"file_name:{file_id}|||{person_name}")
+        if masked_id and person_name:
+            keys.append(f"id_name:{masked_id}|||{person_name}")
+        if file_id:
+            keys.append(f"file:{file_id}")
+        return list(dict.fromkeys(keys))
+
+    def _business_field_values(self, row: Dict[str, Any]) -> Dict[str, str]:
+        fields = row.get("fields") if isinstance(row.get("fields"), dict) else {}
+        return {
+            "姓名": _normalize_field_value("姓名", row.get("person_name") or fields.get("姓名")),
+            "身份证号": _normalize_field_value("身份证号", row.get("masked_id") or fields.get("身份证号")),
+            "相关企业": _normalize_field_value("相关企业", row.get("related_count") or fields.get("相关企业")),
+            "任职": _normalize_field_value("任职", row.get("employment_count") or fields.get("任职")),
+            "参股": _normalize_field_value("参股", row.get("shareholding_count") or fields.get("参股")),
+        }
+
+    def _public_record(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "record_key": row.get("record_key"),
+            "file_id": row.get("file_id"),
+            "file_name": row.get("file_name"),
+            "person_name": row.get("person_name"),
+            "masked_id": row.get("masked_id"),
+            "capture_date": row.get("capture_date"),
+            "capture_time": row.get("capture_time"),
+            "related_count": _normalize_count(row.get("related_count")),
+            "employment_count": _normalize_count(row.get("employment_count")),
+            "shareholding_count": _normalize_count(row.get("shareholding_count")),
+            "review_status": row.get("review_status"),
+        }
+
+    def _diff_record(self, baseline: Dict[str, Any], current: Dict[str, Any], match_status: str) -> Dict[str, Any]:
+        baseline_values = self._business_field_values(baseline)
+        current_values = self._business_field_values(current)
+        field_diffs = []
+        for field in BUSINESS_FIELDS:
+            bval = baseline_values.get(field, "")
+            cval = current_values.get(field, "")
+            if bval == cval:
+                continue
+            if bval and not cval:
+                diff_type = "field_missing_current"
+            elif cval and not bval:
+                diff_type = "field_filled"
+            else:
+                diff_type = "field_changed"
+            field_diffs.append(
+                {
+                    "section": "basic",
+                    "field_name": field,
+                    "baseline_value": bval,
+                    "current_value": cval,
+                    "diff_type": diff_type,
+                    "severity": "high" if field == "身份证号" else "medium",
+                }
+            )
+
+        capture_status = self._capture_time_diff_status(baseline, current)
+        business_changed = bool(field_diffs)
+        business_status = "changed" if business_changed else "same"
+        severity = self._record_severity(business_changed, capture_status, field_diffs)
+        requires_review = severity in {"medium", "high", "critical"}
+        if not business_changed and capture_status in {"newer", "same", "filled"}:
+            requires_review = False
+
+        return {
+            "record_key": current.get("record_key") or baseline.get("record_key"),
+            "match_status": match_status,
+            "business_diff_status": business_status,
+            "capture_time_diff_status": capture_status,
+            "ocr_quality_diff_status": "same",
+            "severity": severity,
+            "requires_review": requires_review,
+            "field_diffs": field_diffs,
+            "baseline": self._public_record(baseline),
+            "current": self._public_record(current),
+        }
+
+    def _new_record_diff(self, current: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "record_key": current.get("record_key"),
+            "match_status": "unmatched_new",
+            "business_diff_status": "new",
+            "capture_time_diff_status": "filled" if current.get("capture_date") or current.get("capture_time") else "missing",
+            "ocr_quality_diff_status": "same",
+            "severity": "high",
+            "requires_review": True,
+            "field_diffs": [
+                {
+                    "section": "record",
+                    "field_name": "记录",
+                    "baseline_value": "",
+                    "current_value": current.get("record_key"),
+                    "diff_type": "record_added",
+                    "severity": "high",
+                }
+            ],
+            "baseline": None,
+            "current": self._public_record(current),
+        }
+
+    def _missing_record_diff(self, baseline: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "record_key": baseline.get("record_key"),
+            "match_status": "unmatched_missing",
+            "business_diff_status": "missing",
+            "capture_time_diff_status": "missing",
+            "ocr_quality_diff_status": "same",
+            "severity": "high",
+            "requires_review": True,
+            "field_diffs": [
+                {
+                    "section": "record",
+                    "field_name": "记录",
+                    "baseline_value": baseline.get("record_key"),
+                    "current_value": "",
+                    "diff_type": "record_missing",
+                    "severity": "high",
+                }
+            ],
+            "baseline": self._public_record(baseline),
+            "current": None,
+        }
+
+    def _capture_time_diff_status(self, baseline: Dict[str, Any], current: Dict[str, Any]) -> str:
+        b_date, b_time = _to_text(baseline.get("capture_date")), _to_text(baseline.get("capture_time"))
+        c_date, c_time = _to_text(current.get("capture_date")), _to_text(current.get("capture_time"))
+        if not b_date and not b_time and not c_date and not c_time:
+            return "same"
+        if not b_date and not b_time and (c_date or c_time):
+            return "filled"
+        if (b_date or b_time) and not c_date and not c_time:
+            return "missing_current"
+        if b_date == c_date and b_time == c_time:
+            return "same"
+        b_tuple = _capture_tuple(b_date, b_time)
+        c_tuple = _capture_tuple(c_date, c_time)
+        if not b_tuple or not c_tuple:
+            return "invalid"
+        if c_tuple > b_tuple:
+            return "newer"
+        if c_tuple < b_tuple:
+            return "older"
+        return "changed"
+
+    def _record_severity(self, business_changed: bool, capture_status: str, field_diffs: List[Dict[str, Any]]) -> str:
+        if business_changed and capture_status == "older":
+            return "critical"
+        if any(diff.get("field_name") == "身份证号" for diff in field_diffs):
+            return "high"
+        if business_changed:
+            return "high"
+        if capture_status == "older":
+            return "medium"
+        if capture_status in {"invalid", "missing_current"}:
+            return "medium"
+        if capture_status in {"newer", "filled", "changed"}:
+            return "info"
+        return "info"
+
+    def _compare_summary(
+        self,
+        diff_records: List[Dict[str, Any]],
+        baseline_records: List[Dict[str, Any]],
+        current_records: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        summary = {
+            "baseline_records": len(baseline_records),
+            "current_records": len(current_records),
+            "total_records": len(diff_records),
+            "matched_records": 0,
+            "same_records": 0,
+            "business_changed_records": 0,
+            "new_records": 0,
+            "missing_records": 0,
+            "capture_time_only_changed": 0,
+            "capture_time_older": 0,
+            "requires_review": 0,
+            "field_diff_count": 0,
+            "severity": {"info": 0, "low": 0, "medium": 0, "high": 0, "critical": 0},
+        }
+        for rec in diff_records:
+            if rec.get("match_status") == "matched":
+                summary["matched_records"] += 1
+            if rec.get("business_diff_status") == "same":
+                summary["same_records"] += 1
+            if rec.get("business_diff_status") == "changed":
+                summary["business_changed_records"] += 1
+            if rec.get("business_diff_status") == "new":
+                summary["new_records"] += 1
+            if rec.get("business_diff_status") == "missing":
+                summary["missing_records"] += 1
+            if rec.get("business_diff_status") == "same" and rec.get("capture_time_diff_status") not in {"same"}:
+                summary["capture_time_only_changed"] += 1
+            if rec.get("capture_time_diff_status") == "older":
+                summary["capture_time_older"] += 1
+            if rec.get("requires_review"):
+                summary["requires_review"] += 1
+            summary["field_diff_count"] += len(rec.get("field_diffs") or [])
+            sev = _to_text(rec.get("severity")) or "info"
+            if sev not in summary["severity"]:
+                summary["severity"][sev] = 0
+            summary["severity"][sev] += 1
+        return summary
 
     def _load_task_records(self, task_dir: Path) -> List[Dict[str, Any]]:
         raw_records = _read_json(task_dir / "raw_4way_flat.json", None)
