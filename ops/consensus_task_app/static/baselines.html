@@ -1368,7 +1368,13 @@
       const decisions = readCompareDecisions(data);
       const required = rows.reduce((sum, row) => sum + rowDecisionRequiredCount(row), 0);
       const decided = rows.reduce((sum, row) => sum + rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]), 0);
+      const pending = Math.max(0, required - decided);
       const disabled = required === 0 || decided < required;
+      const statusHtml = required === 0
+        ? `<span class="decision-chip done">无需裁决</span>`
+        : pending > 0
+          ? `<span class="decision-chip need">待裁决 ${pending} 项</span><span class="decision-chip">已裁决 ${decided}/${required}</span>`
+          : `<span class="decision-chip done">已完成 ${decided}/${required}</span>`;
       return `
         <div class="decision-bar">
           <div>
@@ -1378,7 +1384,7 @@
             </div>
           </div>
           <div class="stats">
-            <span class="decision-chip ${required ? "need" : "done"}">待裁决 ${decided}/${required}</span>
+            ${statusHtml}
             <button class="btn" id="submitBaselineUpdate" type="button" ${disabled ? "disabled" : ""}>提交基线更新</button>
           </div>
         </div>
