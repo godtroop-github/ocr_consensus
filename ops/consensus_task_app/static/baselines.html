@@ -1169,8 +1169,8 @@
       return rows;
     }
 
-    function renderCompareFilters(s) {
-      const items = compareFilterItems(s);
+    function renderCompareFilters(s, scopeRows = null) {
+      const items = compareFilterItems(s, scopeRows);
       return `
         <div class="compare-filters">
           ${items.map(([key, label, count]) => `
@@ -1401,8 +1401,8 @@
       `;
     }
 
-    function compareFilterItems(s) {
-      const rows = prepareCompareRows((lastCompareData && lastCompareData.records) || []);
+    function compareFilterItems(s, scopeRows = null) {
+      const rows = Array.isArray(scopeRows) ? scopeRows : prepareCompareRows((lastCompareData && lastCompareData.records) || []);
       const decisions = readCompareDecisions(lastCompareData);
       const pendingDecisionCount = rows.filter((row) => rowDecisionRequiredCount(row) > rowDecisionResolvedCount(row, decisions[String(row._compare_idx)])).length;
       const doneDecisionCount = rows.filter((row) => {
@@ -1410,18 +1410,19 @@
         return required > 0 && rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
       }).length;
       return [
-        ["all", "全部", s.total_records],
-        ["review", "需复核", s.requires_review],
+        ["all", "全部", rows.length],
+        ["review", "需复核", rows.filter((r) => r.requires_review).length],
         ["decision_pending", "待裁决", pendingDecisionCount],
         ["decision_done", "已裁决", doneDecisionCount],
-        ["business", "业务变化", s.business_changed_records],
-        ["employment", "任职变化", s.employment_changed_records],
-        ["new", "新增", s.new_records],
-        ["missing", "缺失", s.missing_records],
-        ["older", "疑似旧截图", s.capture_time_older],
-        ["time", "仅时间变化", s.capture_time_only_changed],
+        ["business", "业务变化", rows.filter((r) => r.business_diff_status === "changed").length],
+        ["employment", "任职变化", rows.filter((r) => (r.employment_diffs || []).length).length],
+        ["new", "新增", rows.filter((r) => r.business_diff_status === "new").length],
+        ["missing", "缺失", rows.filter((r) => r.business_diff_status === "missing").length],
+        ["older", "疑似旧截图", rows.filter((r) => r.capture_time_diff_status === "older").length],
+        ["time", "仅时间变化", rows.filter((r) => r.business_diff_status === "same" && r.capture_time_diff_status !== "same").length],
       ];
     }
+
 
     function compareFilterLabel(s) {
       const item = compareFilterItems(s).find(([key]) => key === compareFilter);
@@ -2187,13 +2188,14 @@
       const s = data.summary || {};
       const rows = prepareCompareRows(data.records || []);
       const decisions = readCompareDecisions(data);
+      const aggregateScopeRows = applyCompareColumnFilters(applyCompareDetailFilters(rows), decisions);
       const detailRows = applyCompareDetailFilters(compareRowsByFilter(rows, compareFilter));
       compareHeaderBaseRows = detailRows;
       const filteredRows = sortCompareRows(applyCompareColumnFilters(detailRows, decisions), decisions);
       const displayRows = filteredRows.slice(0, 800);
       saveCompareState(data, filteredRows);
       compareResult.innerHTML = `
-        ${renderCompareFilters(s)}
+        ${renderCompareFilters(s, aggregateScopeRows)}
         ${renderCompareDetailFilters()}
         ${compareColumnFilterSummary()}
         ${renderDecisionBar(data, rows)}
