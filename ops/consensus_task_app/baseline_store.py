@@ -412,7 +412,7 @@ class BaselineStore:
         record_rows = []
         for idx, rec in enumerate(records, start=1):
             fields = self._consensus_fields(rec)
-            filename = _to_text(rec.get("filename") or rec.get("file_name"))
+            filename = self._record_file_name_value(rec)
             file_no = _to_text(rec.get("file_no")) or _extract_file_no(filename)
             file_name_from_filename = _to_text(rec.get("file_name_from_filename")) or _extract_filename_name(filename)
             person_name = _to_text(fields.get("姓名") or rec.get("person_name") or rec.get("姓名") or file_name_from_filename)
@@ -537,7 +537,7 @@ class BaselineStore:
         rows: List[Dict[str, Any]] = []
         for idx, rec in enumerate(self._load_task_records(task_dir), start=1):
             fields = self._consensus_fields(rec)
-            filename = _to_text(rec.get("filename") or rec.get("file_name"))
+            filename = self._record_file_name_value(rec)
             file_no = _to_text(rec.get("file_no")) or _extract_file_no(filename)
             file_name_from_filename = _to_text(rec.get("file_name_from_filename")) or _extract_filename_name(filename)
             person_name = _to_text(fields.get("姓名") or rec.get("person_name") or rec.get("姓名") or file_name_from_filename)
@@ -708,11 +708,16 @@ class BaselineStore:
         capture_status = self._capture_time_diff_status(baseline, current)
         employment_diff = self._diff_employment_rows(baseline_employment or [], current_employment or [])
         employment_diffs = employment_diff["diffs"]
+        baseline_images = self._record_images(baseline, baseline_employment or [])
+        current_images = self._record_images(current, current_employment or [])
+        image_diffs = self._diff_images(baseline_images, current_images)
         business_changed = bool(field_diffs or employment_diffs)
         business_status = "changed" if business_changed else "same"
         severity = self._record_severity(business_changed, capture_status, field_diffs, employment_diffs)
+        if image_diffs and severity == "info":
+            severity = "medium"
         requires_review = severity in {"medium", "high", "critical"}
-        if not business_changed and capture_status in {"newer", "same", "filled"}:
+        if not business_changed and capture_status in {"newer", "same", "filled"} and not image_diffs:
             requires_review = False
 
         return {
@@ -726,11 +731,14 @@ class BaselineStore:
             "field_diffs": field_diffs,
             "employment_diffs": employment_diffs,
             "employment_summary": employment_diff["summary"],
-            "diff_summary": self._diff_summary(field_diffs, employment_diffs, capture_status),
+            "image_diffs": image_diffs,
+            "diff_summary": self._diff_summary(field_diffs, employment_diffs, image_diffs, capture_status),
             "baseline": self._public_record(baseline),
             "current": self._public_record(current),
             "baseline_employment": [self._public_employment_row(row) for row in baseline_employment or []],
             "current_employment": [self._public_employment_row(row) for row in current_employment or []],
+            "baseline_images": baseline_images,
+            "current_images": current_images,
         }
 
     def _new_record_diff(
@@ -739,6 +747,8 @@ class BaselineStore:
         current_employment: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         employment_diffs = self._employment_added_diffs(current_employment or [])
+        current_images = self._record_images(current, current_employment or [])
+        image_diffs = self._image_added_diffs(current_images)
         return {
             "record_key": current.get("record_key"),
             "match_status": "unmatched_new",
@@ -759,11 +769,14 @@ class BaselineStore:
             ],
             "employment_diffs": employment_diffs,
             "employment_summary": self._employment_summary([], current_employment or [], 0, 0, len(current_employment or []), 0),
+            "image_diffs": image_diffs,
             "diff_summary": ["新增记录"],
             "baseline": None,
             "current": self._public_record(current),
             "baseline_employment": [],
             "current_employment": [self._public_employment_row(row) for row in current_employment or []],
+            "baseline_images": [],
+            "current_images": current_images,
         }
 
     def _missing_record_diff(
@@ -772,6 +785,8 @@ class BaselineStore:
         baseline_employment: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         employment_diffs = self._employment_missing_diffs(baseline_employment or [])
+        baseline_images = self._record_images(baseline, baseline_employment or [])
+        image_diffs = self._image_missing_diffs(baseline_images)
         return {
             "record_key": baseline.get("record_key"),
             "match_status": "unmatched_missing",
@@ -792,11 +807,14 @@ class BaselineStore:
             ],
             "employment_diffs": employment_diffs,
             "employment_summary": self._employment_summary(baseline_employment or [], [], 0, 0, 0, len(baseline_employment or [])),
+            "image_diffs": image_diffs,
             "diff_summary": ["基线记录缺失"],
             "baseline": self._public_record(baseline),
             "current": None,
             "baseline_employment": [self._public_employment_row(row) for row in baseline_employment or []],
             "current_employment": [],
+            "baseline_images": baseline_images,
+            "current_images": [],
         }
 
     def _capture_time_diff_status(self, baseline: Dict[str, Any], current: Dict[str, Any]) -> str:
@@ -866,6 +884,8 @@ class BaselineStore:
             "field_diff_count": 0,
             "employment_changed_records": 0,
             "employment_diff_count": 0,
+            "image_changed_records": 0,
+            "image_diff_count": 0,
             "severity": {"info": 0, "low": 0, "medium": 0, "high": 0, "critical": 0},
         }
         for rec in diff_records:
@@ -889,6 +909,9 @@ class BaselineStore:
             if rec.get("employment_diffs"):
                 summary["employment_changed_records"] += 1
                 summary["employment_diff_count"] += len(rec.get("employment_diffs") or [])
+            if rec.get("image_diffs"):
+                summary["image_changed_records"] += 1
+                summary["image_diff_count"] += len(rec.get("image_diffs") or [])
             sev = _to_text(rec.get("severity")) or "info"
             if sev not in summary["severity"]:
                 summary["severity"][sev] = 0
@@ -1043,10 +1066,61 @@ class BaselineStore:
             "row_status": row.get("row_status"),
         }
 
+    def _record_images(self, record: Dict[str, Any], employment_rows: List[Dict[str, Any]]) -> List[str]:
+        images: List[str] = []
+
+        def add(value: Any) -> None:
+            text = _to_text(value)
+            if not text:
+                return
+            for item in re.split(r"[|,，;；]+", text):
+                name = Path(_to_text(item)).name
+                if name and name not in images:
+                    images.append(name)
+
+        add(record.get("file_name"))
+        for row in employment_rows:
+            add(row.get("source_image"))
+        return images
+
+    def _diff_images(self, baseline_images: List[str], current_images: List[str]) -> List[Dict[str, Any]]:
+        baseline_set = set(baseline_images)
+        current_set = set(current_images)
+        return self._image_missing_diffs(sorted(baseline_set - current_set)) + self._image_added_diffs(
+            sorted(current_set - baseline_set)
+        )
+
+    def _image_added_diffs(self, images: List[str]) -> List[Dict[str, Any]]:
+        return [
+            {
+                "section": "image",
+                "field_name": "图片",
+                "baseline_value": "",
+                "current_value": image,
+                "diff_type": "image_added",
+                "severity": "medium",
+            }
+            for image in images
+        ]
+
+    def _image_missing_diffs(self, images: List[str]) -> List[Dict[str, Any]]:
+        return [
+            {
+                "section": "image",
+                "field_name": "图片",
+                "baseline_value": image,
+                "current_value": "",
+                "diff_type": "image_missing",
+                "severity": "medium",
+            }
+            for image in images
+        ]
+
     def _diff_summary(
         self,
         field_diffs: List[Dict[str, Any]],
         employment_diffs: List[Dict[str, Any]],
+        image_diffs: List[Dict[str, Any]],
         capture_status: str,
     ) -> List[str]:
         summary: List[str] = []
@@ -1076,6 +1150,14 @@ class BaselineStore:
                 summary.append(f"{type_label.get(diff_type, diff_type)} {count}")
             if len(by_type) > 4:
                 summary.append(f"任职明细另有 {len(by_type) - 4} 类变化")
+
+        if image_diffs:
+            added = len([diff for diff in image_diffs if diff.get("diff_type") == "image_added"])
+            missing = len([diff for diff in image_diffs if diff.get("diff_type") == "image_missing"])
+            if added:
+                summary.append(f"图片增加 {added}")
+            if missing:
+                summary.append(f"图片减少 {missing}")
 
         if not summary and capture_status not in {"same"}:
             summary.append(f"采集时间 {capture_status}")
@@ -1120,6 +1202,32 @@ class BaselineStore:
             payload = _read_js_var(task_dir / "employment_extraction" / "employment_data.js", "OCR_EMPLOYMENT", {})
         rows = payload.get("person_rows") if isinstance(payload, dict) else []
         return [r for r in rows if isinstance(r, dict)]
+
+    def _record_file_name_value(self, rec: Dict[str, Any]) -> str:
+        names: List[str] = []
+
+        def add(value: Any) -> None:
+            if isinstance(value, list):
+                for item in value:
+                    add(item)
+                return
+            if isinstance(value, dict):
+                for key in ["filename", "file_name", "name", "path"]:
+                    if key in value:
+                        add(value.get(key))
+                return
+            text = _to_text(value)
+            if not text:
+                return
+            for item in re.split(r"[|,，;；]+", text):
+                name = Path(_to_text(item)).name
+                if name and name not in names:
+                    names.append(name)
+
+        for key in ["filename", "file_name", "filenames", "files", "images", "image_files", "source_images", "source_files"]:
+            if key in rec:
+                add(rec.get(key))
+        return "|".join(names)
 
     def _consensus_fields(self, rec: Dict[str, Any]) -> Dict[str, Any]:
         consensus = rec.get("weighted_consensus")

@@ -473,7 +473,8 @@
       background: #FFFDF8;
     }
     .image-frame {
-      height: 260px;
+      height: min(54vh, 520px);
+      min-height: 320px;
       display: grid;
       place-items: center;
       background: #F2EFE7;
@@ -489,6 +490,31 @@
       max-height: none;
       width: 100%;
       cursor: zoom-out;
+    }
+    .batch-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-top: 1px solid var(--line-soft);
+      background: #FFFDF8;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--green-strong);
+      cursor: pointer;
+      font-weight: 900;
+    }
+    .icon-btn:disabled {
+      opacity: .35;
+      cursor: not-allowed;
     }
     .compare-block {
       border: 1px solid var(--line-soft);
@@ -583,23 +609,12 @@
       </div>
     </section>
 
-    <section class="card">
-      <div class="card-head">
-        <h2>基线详情</h2>
-        <div id="detailTitle" class="muted">选择一条基线查看详情</div>
-      </div>
-      <div id="detail" class="detail">
-        <div class="empty">暂无基线详情。</div>
-      </div>
-    </section>
   </div>
 
   <script>
     const $ = (id) => document.getElementById(id);
     const stats = $("stats");
     const list = $("list");
-    const detail = $("detail");
-    const detailTitle = $("detailTitle");
     const compareBaseline = $("compareBaseline");
     const compareTask = $("compareTask");
     const compareBtn = $("compareBtn");
@@ -675,8 +690,7 @@
                 <td>${Number(b.image_count || 0)}</td>
                 <td class="mono">${esc(fmtTime(b.created_at))}</td>
                 <td class="right">
-                  <button class="btn" type="button" onclick="loadDetail('${esc(b.id)}')">查看</button>
-                  <button class="btn" type="button" onclick="selectBaselineForCompare('${esc(b.id)}')">比对</button>
+                  <button class="btn" type="button" onclick="selectBaselineForCompare('${esc(b.id)}')">选作基线</button>
                 </td>
               </tr>
             `).join("")}
@@ -703,7 +717,9 @@
 
     function selectBaselineForCompare(id) {
       compareBaseline.value = id;
-      loadDetail(id);
+      const url = new URL(location.href);
+      url.searchParams.set("id", id);
+      history.replaceState(null, "", url);
       document.querySelector(".compare-controls").scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
@@ -934,6 +950,7 @@
       if (key === "review") return rows.filter((r) => r.requires_review);
       if (key === "business") return rows.filter((r) => r.business_diff_status === "changed");
       if (key === "employment") return rows.filter((r) => (r.employment_diffs || []).length);
+      if (key === "image") return rows.filter((r) => (r.image_diffs || []).length);
       if (key === "new") return rows.filter((r) => r.business_diff_status === "new");
       if (key === "missing") return rows.filter((r) => r.business_diff_status === "missing");
       if (key === "older") return rows.filter((r) => r.capture_time_diff_status === "older");
@@ -983,6 +1000,7 @@
         ["review", "需复核", s.requires_review],
         ["business", "业务变化", s.business_changed_records],
         ["employment", "任职变化", s.employment_changed_records],
+        ["image", "图片变化", s.image_changed_records],
         ["new", "新增", s.new_records],
         ["missing", "缺失", s.missing_records],
         ["older", "疑似旧截图", s.capture_time_older],
@@ -1118,6 +1136,10 @@
           c.share_ratio
         );
       }
+      for (const diff of row.image_diffs || []) {
+        parts.push(diff.field_name, diff.baseline_value, diff.current_value, diff.diff_type);
+      }
+      parts.push(...(row.baseline_images || []), ...(row.current_images || []));
       return parts.map((x) => String(x || "").toLowerCase()).join(" ");
     }
 
@@ -1144,6 +1166,7 @@
     }
 
     let compareSelectedUid = "";
+    let compareImageIndex = { baseline: 0, current: 0 };
 
     function compareRowUid(row, idx) {
       return row._compare_uid || `${row.record_key || ""}::${recordId(row)}::${recordName(row)}::${idx}`;
@@ -1194,6 +1217,17 @@
       `).join("") + (Object.keys(grouped).length > 5 ? `<span class="diff-chip changed">另 ${Object.keys(grouped).length - 5} 类</span>` : "");
     }
 
+    function renderImageDiffChips(row) {
+      const diffs = row.image_diffs || [];
+      if (!diffs.length) return `<span class="diff-chip same">图片一致</span>`;
+      const added = diffs.filter((d) => d.diff_type === "image_added").length;
+      const missing = diffs.filter((d) => d.diff_type === "image_missing").length;
+      return [
+        added ? `<span class="diff-chip changed">图片增加 ${added}</span>` : "",
+        missing ? `<span class="diff-chip bad">图片减少 ${missing}</span>` : "",
+      ].filter(Boolean).join("");
+    }
+
     function recordStatusLabel(row) {
       if (row.match_status === "unmatched_new") return "新增";
       if (row.match_status === "unmatched_missing") return "缺失";
@@ -1207,20 +1241,35 @@
       return "same";
     }
 
-    function imageUrl(taskId, record) {
-      const file = record && record.file_name;
+    function imageUrlFromFile(taskId, file) {
       if (!taskId || !file) return "";
       return `/runs/${encodeURIComponent(taskId)}/dashboard/images/${encodeURIComponent(file)}`;
     }
 
-    function renderImageCard(label, taskId, record) {
-      const src = imageUrl(taskId, record);
-      const file = record && record.file_name;
+    function imageList(row, side) {
+      const key = side === "baseline" ? "baseline_images" : "current_images";
+      const record = side === "baseline" ? row.baseline : row.current;
+      const list = (row[key] || []).filter(Boolean);
+      if (!list.length && record && record.file_name) list.push(record.file_name);
+      return [...new Set(list)];
+    }
+
+    function renderImageBatch(label, taskId, row, side) {
+      const images = imageList(row, side);
+      const total = images.length;
+      const idx = Math.max(0, Math.min(Number(compareImageIndex[side] || 0), Math.max(0, total - 1)));
+      const file = total ? images[idx] : "";
+      const src = imageUrlFromFile(taskId, file);
       return `
         <div class="image-card">
           <h4>${esc(label)}${file ? ` · ${esc(file)}` : ""}</h4>
           <div class="image-frame">
             ${src ? `<img src="${esc(src)}" alt="${esc(label)}" title="点击放大/恢复" />` : `<div class="empty" style="padding:18px;">图片不可用</div>`}
+          </div>
+          <div class="batch-controls">
+            <button class="icon-btn" type="button" data-image-nav="${esc(side)}" data-delta="-1" ${total <= 1 ? "disabled" : ""}>‹</button>
+            <span class="mono">${total ? `${idx + 1} / ${total}` : "0 / 0"}</span>
+            <button class="icon-btn" type="button" data-image-nav="${esc(side)}" data-delta="1" ${total <= 1 ? "disabled" : ""}>›</button>
           </div>
         </div>
       `;
@@ -1359,8 +1408,8 @@
           </div>
           <div class="review-body">
             <div class="image-pair">
-              ${renderImageCard("基线图片", baselineTaskId, row.baseline)}
-              ${renderImageCard("本次图片", currentTaskId, row.current)}
+              ${renderImageBatch("基线批次图片", baselineTaskId, row, "baseline")}
+              ${renderImageBatch("本次批次图片", currentTaskId, row, "current")}
             </div>
             ${renderBasicCompare(row)}
             ${renderEmploymentCompare(row)}
@@ -1385,6 +1434,7 @@
           <div class="metric accent"><div class="k">业务一致</div><div class="v">${Number(s.same_records || 0)}</div><div class="hint">不含新增和缺失</div></div>
           <div class="metric warn"><div class="k">业务变化</div><div class="v">${Number(s.business_changed_records || 0)}</div><div class="hint">基础或任职字段变化</div></div>
           <div class="metric warn"><div class="k">任职变化</div><div class="v">${Number(s.employment_changed_records || 0)}</div><div class="hint">企业明细逐字段差异</div></div>
+          <div class="metric warn"><div class="k">图片变化</div><div class="v">${Number(s.image_changed_records || 0)}</div><div class="hint">批次图片增加或减少</div></div>
           <div class="metric bad"><div class="k">新增 / 缺失</div><div class="v">${Number(s.new_records || 0)} / ${Number(s.missing_records || 0)}</div><div class="hint">记录级变化</div></div>
           <div class="metric bad"><div class="k">需复核</div><div class="v">${Number(s.requires_review || 0)}</div><div class="hint">中高风险或业务变化</div></div>
         </div>
@@ -1403,6 +1453,7 @@
                   <th>截图时间</th>
                   <th>基础信息差异</th>
                   <th>任职明细差异</th>
+                  <th>图片变化</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -1416,9 +1467,10 @@
                     <td>${esc(recordCapture(row))}</td>
                     <td><div class="diff-chips">${renderBasicDiffChips(row)}</div></td>
                     <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
+                    <td><div class="diff-chips">${renderImageDiffChips(row)}</div></td>
                     <td><button class="row-open" type="button" data-select-record="${esc(row._compare_uid)}">查看</button></td>
                   </tr>
-                `).join("") : `<tr><td colspan="8"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
+                `).join("") : `<tr><td colspan="9"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
               </tbody>
             </table>
           </div>
@@ -1440,7 +1492,21 @@
       });
       compareResult.querySelectorAll("[data-select-record], [data-record-row]").forEach((el) => {
         el.addEventListener("click", () => {
-          compareSelectedUid = el.dataset.selectRecord || el.dataset.recordRow || "";
+          const nextUid = el.dataset.selectRecord || el.dataset.recordRow || "";
+          if (nextUid !== compareSelectedUid) compareImageIndex = { baseline: 0, current: 0 };
+          compareSelectedUid = nextUid;
+          renderCompareResult(lastCompareData);
+        });
+      });
+      compareResult.querySelectorAll("[data-image-nav]").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const side = btn.dataset.imageNav;
+          const delta = Number(btn.dataset.delta || 0);
+          const row = (lastCompareData.records || []).find((item) => item._compare_uid === compareSelectedUid);
+          const total = row ? imageList(row, side).length : 0;
+          if (!side || total <= 1) return;
+          compareImageIndex[side] = (Number(compareImageIndex[side] || 0) + delta + total) % total;
           renderCompareResult(lastCompareData);
         });
       });
@@ -1551,8 +1617,8 @@
       renderList();
       renderCompareControls();
       const targetId = new URL(location.href).searchParams.get("id");
-      if (targetId) {
-        loadDetail(targetId);
+      if (targetId && baselines.some((b) => b.id === targetId)) {
+        compareBaseline.value = targetId;
       }
     }
 
