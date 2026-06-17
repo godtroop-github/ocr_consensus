@@ -1376,7 +1376,7 @@
         const required = rowDecisionRequiredCount(row);
         return rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
       });
-      const pendingRows = decisionRows.length - doneRows.length;
+      const pendingRows = Math.max(0, decisionRows.length - doneRows.length);
       const requiredItems = decisionRows.reduce((sum, row) => sum + rowDecisionRequiredCount(row), 0);
       const decidedItems = decisionRows.reduce((sum, row) => sum + rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]), 0);
       const statusHtml = decisionRows.length === 0
@@ -1384,9 +1384,7 @@
         : pendingRows > 0
           ? `<span class="decision-chip need">待裁决 ${pendingRows} 条</span><span class="decision-chip">已裁决 ${doneRows.length}/${decisionRows.length} 条</span>`
           : `<span class="decision-chip done">已完成 ${doneRows.length}/${decisionRows.length} 条</span>`;
-      const itemHint = decisionRows.length > 0
-        ? `<span class="decision-chip">字段项 ${decidedItems}/${requiredItems}</span>`
-        : "";
+      const itemHint = decisionRows.length > 0 ? `<span class="decision-chip">字段项 ${decidedItems}/${requiredItems}</span>` : "";
       const buttonText = decisionRows.length === 0 ? "无需更新" : "提交基线更新";
       const buttonTitle = decisionRows.length === 0
         ? "本次比对没有需要裁决的业务差异，不生成新的真实基线版本。"
@@ -1418,7 +1416,7 @@
         const required = rowDecisionRequiredCount(row);
         return rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
       });
-      const pendingRows = decisionRows.length - doneRows.length;
+      const pendingRows = Math.max(0, decisionRows.length - doneRows.length);
       if (!decisionRows.length) {
         alert("本次比对没有需要人工裁决的业务差异，无需生成新的业务基线版本。");
         return;
