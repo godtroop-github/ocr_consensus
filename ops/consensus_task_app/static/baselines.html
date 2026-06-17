@@ -159,6 +159,84 @@
       gap: 10px;
       margin-bottom: 16px;
     }
+    .metric.accent { border-color: #CFE3D6; background: linear-gradient(180deg, #FFFFFF, #F4FAF6); }
+    .metric.warn { border-color: #E9D9B8; background: linear-gradient(180deg, #FFFFFF, #FFF7E6); }
+    .metric.bad { border-color: #EAC8C1; background: linear-gradient(180deg, #FFFFFF, #FFF1EE); }
+    .metric .hint { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .compare-viz {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.2fr) minmax(260px, .8fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .viz-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 18px;
+      background: #fff;
+      padding: 14px;
+    }
+    .viz-title { font-weight: 850; margin-bottom: 12px; }
+    .stack-bar {
+      display: flex;
+      height: 18px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #F0ECE3;
+      box-shadow: inset 0 0 0 1px rgba(230,224,212,.75);
+    }
+    .stack-seg { min-width: 0; }
+    .stack-seg.same { background: #9CB9A9; }
+    .stack-seg.changed { background: #D8B56D; }
+    .stack-seg.new { background: #C97C71; }
+    .stack-seg.missing { background: #B46458; }
+    .stack-seg.time { background: #8EA5B8; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+    .dot.same { background: #9CB9A9; }
+    .dot.changed { background: #D8B56D; }
+    .dot.new { background: #C97C71; }
+    .dot.missing { background: #B46458; }
+    .dot.time { background: #8EA5B8; }
+    .risk-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .risk-pill {
+      border: 1px solid var(--line-soft);
+      border-radius: 14px;
+      background: #FFFDF8;
+      padding: 9px 8px;
+      text-align: center;
+    }
+    .risk-pill strong { display: block; font-size: 18px; }
+    .risk-pill span { color: var(--muted); font-size: 11px; }
+    .compare-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin: 0 0 12px;
+    }
+    .filter-pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--muted);
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .filter-pill.active {
+      color: var(--green-strong);
+      background: var(--green-soft);
+      border-color: #CFE3D6;
+    }
     .diff-status {
       display: inline-flex;
       padding: 4px 8px;
@@ -174,6 +252,29 @@
     .diff-list { display: grid; gap: 4px; min-width: 180px; }
     .diff-line { color: var(--text); }
     .diff-line small { color: var(--muted); display: block; margin-top: 2px; }
+    .value-compare {
+      display: grid;
+      grid-template-columns: minmax(90px, 1fr) 18px minmax(90px, 1fr);
+      gap: 7px;
+      align-items: stretch;
+      min-width: 280px;
+    }
+    .value-box {
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      padding: 7px 8px;
+      background: #FFFDF8;
+      min-height: 44px;
+    }
+    .value-box.current { border-color: #CFE3D6; background: #F4FAF6; }
+    .value-box.baseline { border-color: #E9D9B8; background: #FFF8E9; }
+    .value-label { color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+    .value-text { color: var(--text); font-weight: 800; overflow-wrap: anywhere; }
+    .arrow { align-self: center; color: var(--muted); text-align: center; }
+    .record-main { display: grid; gap: 3px; min-width: 120px; }
+    .record-main strong { font-size: 14px; }
+    .record-main span { color: var(--muted); font-size: 12px; }
+    .compare-note { color: var(--muted); font-size: 12px; margin-top: 10px; line-height: 1.6; }
     @media (max-width: 900px) {
       .wrap { width: min(100vw - 24px, 760px); }
       .topbar { display: block; }
@@ -181,6 +282,7 @@
       table { min-width: 940px; }
       .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .compare-controls { grid-template-columns: 1fr; }
+      .compare-viz { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -249,6 +351,8 @@
     const compareResult = $("compareResult");
     let baselines = [];
     let tasks = [];
+    let lastCompareData = null;
+    let compareFilter = "review";
 
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -457,7 +561,18 @@
         <div class="diff-list">
           ${diffs.map((d) => `
             <div class="diff-line">
-              ${esc(d.field_name)}：${esc(d.baseline_value || "—")} → ${esc(d.current_value || "—")}
+              <strong>${esc(d.field_name)}</strong>
+              <div class="value-compare">
+                <div class="value-box baseline">
+                  <div class="value-label">基线</div>
+                  <div class="value-text">${esc(d.baseline_value || "—")}</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="value-box current">
+                  <div class="value-label">本次</div>
+                  <div class="value-text">${esc(d.current_value || "—")}</div>
+                </div>
+              </div>
               <small>${esc(d.diff_type || "")}</small>
             </div>
           `).join("")}
@@ -465,20 +580,112 @@
       `;
     }
 
+    function pct(part, total) {
+      if (!total) return 0;
+      return Math.max(0, Math.min(100, (Number(part || 0) / total) * 100));
+    }
+
+    function compareRowsByFilter(rows, key) {
+      if (key === "all") return rows;
+      if (key === "review") return rows.filter((r) => r.requires_review);
+      if (key === "business") return rows.filter((r) => r.business_diff_status === "changed");
+      if (key === "new") return rows.filter((r) => r.business_diff_status === "new");
+      if (key === "missing") return rows.filter((r) => r.business_diff_status === "missing");
+      if (key === "older") return rows.filter((r) => r.capture_time_diff_status === "older");
+      if (key === "time") return rows.filter((r) => r.business_diff_status === "same" && r.capture_time_diff_status !== "same");
+      return rows;
+    }
+
+    function renderCompareFilters(s) {
+      const items = compareFilterItems(s);
+      return `
+        <div class="compare-filters">
+          ${items.map(([key, label, count]) => `
+            <button class="filter-pill ${compareFilter === key ? "active" : ""}" type="button" data-compare-filter="${esc(key)}">
+              ${esc(label)} ${Number(count || 0)}
+            </button>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function compareFilterItems(s) {
+      return [
+        ["all", "全部", s.total_records],
+        ["review", "需复核", s.requires_review],
+        ["business", "业务变化", s.business_changed_records],
+        ["new", "新增", s.new_records],
+        ["missing", "缺失", s.missing_records],
+        ["older", "疑似旧截图", s.capture_time_older],
+        ["time", "仅时间变化", s.capture_time_only_changed],
+      ];
+    }
+
+    function compareFilterLabel(s) {
+      const item = compareFilterItems(s).find(([key]) => key === compareFilter);
+      return item ? `${item[1]} ${Number(item[2] || 0)}` : "重点差异";
+    }
+
+    function renderCompareViz(s) {
+      const total = Number(s.total_records || 0);
+      const same = Number(s.same_records || 0);
+      const changed = Number(s.business_changed_records || 0);
+      const added = Number(s.new_records || 0);
+      const missing = Number(s.missing_records || 0);
+      const timeOnly = Number(s.capture_time_only_changed || 0);
+      const severity = s.severity || {};
+      return `
+        <div class="compare-viz">
+          <div class="viz-card">
+            <div class="viz-title">变化构成</div>
+            <div class="stack-bar" title="业务一致 / 业务变化 / 新增 / 缺失 / 仅时间变化">
+              <div class="stack-seg same" style="width:${pct(same, total)}%"></div>
+              <div class="stack-seg changed" style="width:${pct(changed, total)}%"></div>
+              <div class="stack-seg new" style="width:${pct(added, total)}%"></div>
+              <div class="stack-seg missing" style="width:${pct(missing, total)}%"></div>
+              <div class="stack-seg time" style="width:${pct(timeOnly, total)}%"></div>
+            </div>
+            <div class="legend">
+              <span><i class="dot same"></i>业务一致 ${same}</span>
+              <span><i class="dot changed"></i>业务变化 ${changed}</span>
+              <span><i class="dot new"></i>新增 ${added}</span>
+              <span><i class="dot missing"></i>缺失 ${missing}</span>
+              <span><i class="dot time"></i>仅时间变化 ${timeOnly}</span>
+            </div>
+          </div>
+          <div class="viz-card">
+            <div class="viz-title">风险分布</div>
+            <div class="risk-grid">
+              ${["info", "low", "medium", "high", "critical"].map((key) => `
+                <div class="risk-pill">
+                  <strong>${Number(severity[key] || 0)}</strong>
+                  <span>${esc(severityLabel(key))}</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function renderCompareResult(data) {
+      lastCompareData = data;
       const s = data.summary || {};
       const rows = data.records || [];
-      const focusRows = rows.filter((r) => r.requires_review || r.business_diff_status !== "same" || r.capture_time_diff_status === "older");
+      const filteredRows = compareRowsByFilter(rows, compareFilter);
+      const focusRows = filteredRows.length ? filteredRows : rows.filter((r) => r.requires_review || r.business_diff_status !== "same" || r.capture_time_diff_status === "older");
       const displayRows = (focusRows.length ? focusRows : rows).slice(0, 300);
       compareResult.innerHTML = `
         <div class="compare-summary">
-          <div class="metric"><div class="k">总记录</div><div class="v">${Number(s.total_records || 0)}</div></div>
-          <div class="metric"><div class="k">业务一致</div><div class="v">${Number(s.same_records || 0)}</div></div>
-          <div class="metric"><div class="k">业务变化</div><div class="v">${Number(s.business_changed_records || 0)}</div></div>
-          <div class="metric"><div class="k">新增/缺失</div><div class="v">${Number(s.new_records || 0)} / ${Number(s.missing_records || 0)}</div></div>
-          <div class="metric"><div class="k">仅时间变化</div><div class="v">${Number(s.capture_time_only_changed || 0)}</div></div>
-          <div class="metric"><div class="k">需复核</div><div class="v">${Number(s.requires_review || 0)}</div></div>
+          <div class="metric accent"><div class="k">总记录</div><div class="v">${Number(s.total_records || 0)}</div><div class="hint">基线 ${Number(s.baseline_records || 0)} / 本次 ${Number(s.current_records || 0)}</div></div>
+          <div class="metric accent"><div class="k">业务一致</div><div class="v">${Number(s.same_records || 0)}</div><div class="hint">不含新增和缺失</div></div>
+          <div class="metric warn"><div class="k">业务变化</div><div class="v">${Number(s.business_changed_records || 0)}</div><div class="hint">基础字段值不同</div></div>
+          <div class="metric bad"><div class="k">新增 / 缺失</div><div class="v">${Number(s.new_records || 0)} / ${Number(s.missing_records || 0)}</div><div class="hint">记录级变化</div></div>
+          <div class="metric"><div class="k">仅时间变化</div><div class="v">${Number(s.capture_time_only_changed || 0)}</div><div class="hint">默认弱差异</div></div>
+          <div class="metric bad"><div class="k">需复核</div><div class="v">${Number(s.requires_review || 0)}</div><div class="hint">中高风险或业务变化</div></div>
         </div>
+        ${renderCompareViz(s)}
+        ${renderCompareFilters(s)}
         <div class="scroll-box">
           <table>
             <thead>
@@ -496,8 +703,8 @@
             <tbody>
               ${displayRows.map((row) => `
                 <tr>
-                  <td>${esc(recordId(row))}</td>
-                  <td>${esc(recordName(row))}</td>
+                  <td><div class="record-main"><strong>${esc(recordId(row))}</strong><span>${esc(row.match_status || "")}</span></div></td>
+                  <td><div class="record-main"><strong>${esc(recordName(row))}</strong><span>${esc(row.record_key || "")}</span></div></td>
                   <td>${esc(recordMaskedId(row))}</td>
                   <td>${esc(recordCapture(row))}</td>
                   <td><span class="diff-status ${esc(row.business_diff_status)}">${esc(bizLabel(row.business_diff_status))}</span></td>
@@ -509,8 +716,18 @@
             </tbody>
           </table>
         </div>
-        ${focusRows.length > 300 ? `<div class="muted" style="margin-top:10px;">仅展示前 300 条重点差异。</div>` : ""}
+        <div class="compare-note">
+          当前展示：${esc(compareFilterLabel(s))}。
+          ${focusRows.length > 300 ? "仅展示前 300 条。" : ""}
+          截图时间为采集时间弱差异，只有疑似旧截图或伴随业务变化时才建议重点复核。
+        </div>
       `;
+      compareResult.querySelectorAll("[data-compare-filter]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          compareFilter = btn.dataset.compareFilter || "review";
+          renderCompareResult(lastCompareData);
+        });
+      });
     }
 
     async function startCompare() {
@@ -531,6 +748,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || "比对失败");
+        compareFilter = "review";
         renderCompareResult(data);
       } catch (err) {
         compareResult.innerHTML = `<div class="empty">${esc(err.message || String(err))}</div>`;
