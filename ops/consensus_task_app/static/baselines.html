@@ -43,7 +43,7 @@
       font-family: var(--font-ui);
       font-variant-numeric: tabular-nums;
     }
-    .wrap { width: min(1280px, calc(100vw - 48px)); margin: 0 auto; padding: 32px 0 48px; }
+    .wrap { width: min(1480px, calc(100vw - 48px)); margin: 0 auto; padding: 32px 0 48px; display: flex; flex-direction: column; }
     .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
     h1 { margin: 0 0 8px; font-size: clamp(28px, 3vw, 36px); font-weight: 500; letter-spacing: -.6px; }
     .sub { margin: 0; max-width: 760px; color: var(--muted); line-height: 1.7; font-size: 14px; }
@@ -71,6 +71,9 @@
       box-shadow: var(--shadow);
       overflow: hidden;
     }
+    .primary-compare { order: 1; }
+    .compact-baselines { order: 2; }
+    .compact-baselines .table-wrap { max-height: 260px; overflow: auto; }
     .card + .card { margin-top: 20px; }
     .card-head {
       display: flex;
@@ -379,28 +382,77 @@
     .employment-diffs table { font-size: 12px; }
     .compare-workspace {
       display: grid;
-      grid-template-columns: minmax(520px, .95fr) minmax(560px, 1.05fr);
-      gap: 14px;
+      grid-template-columns: minmax(460px, .78fr) minmax(680px, 1.22fr);
+      gap: 16px;
       align-items: start;
     }
-    .diff-table-wrap {
+    .diff-list-panel {
       max-height: 720px;
       overflow: auto;
       border: 1px solid var(--line-soft);
       border-radius: 18px;
+      background: rgba(255,253,248,.92);
+      padding: 10px;
+    }
+    .diff-list-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 6px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .diff-record-list {
+      display: grid;
+      gap: 9px;
+    }
+    .diff-card {
+      display: grid;
+      width: 100%;
+      gap: 9px;
+      border: 1px solid var(--line-soft);
+      border-radius: 18px;
       background: #fff;
-    }
-    .diff-table tr.is-selected td {
-      background: #EFF7F2;
-      box-shadow: inset 3px 0 0 var(--green-strong);
-    }
-    .diff-table button.row-open {
-      border: 0;
-      background: transparent;
-      color: var(--green-strong);
+      padding: 12px;
+      text-align: left;
       cursor: pointer;
+      color: var(--text);
+      box-shadow: 0 6px 18px rgba(62, 54, 43, .035);
+    }
+    .diff-card:hover { border-color: #CFE3D6; background: #FBFFFC; }
+    .diff-card.is-selected {
+      border-color: #AFCDBB;
+      background: #EFF7F2;
+      box-shadow: inset 4px 0 0 var(--green-strong), 0 8px 24px rgba(62, 54, 43, .055);
+    }
+    .diff-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .diff-card-title strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 3px;
+    }
+    .diff-card-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .diff-card-section {
+      display: grid;
+      gap: 5px;
+    }
+    .diff-card-section .section-label {
+      color: var(--muted);
+      font-size: 11px;
       font-weight: 850;
-      padding: 0;
     }
     .diff-chips {
       display: flex;
@@ -551,6 +603,57 @@
     .compare-cell.same .b,
     .compare-cell.same .c { background: #F4FAF6; border-color: #CFE3D6; }
     .compare-cell .arr { color: var(--muted); text-align: center; }
+    .company-compare-list {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+    .company-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #FFFDF8;
+      overflow: hidden;
+    }
+    .company-card[open] {
+      background: #fff;
+      border-color: #D9D0C1;
+    }
+    .company-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 12px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .company-summary::-webkit-details-marker { display: none; }
+    .company-pair {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+    .company-name {
+      overflow-wrap: anywhere;
+      font-weight: 850;
+    }
+    .company-name small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .company-fields {
+      padding: 0 12px 12px;
+    }
+    .company-fields table {
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+    }
     @media (max-width: 900px) {
       .wrap { width: min(100vw - 24px, 760px); }
       .topbar { display: block; }
@@ -580,7 +683,7 @@
       </div>
     </div>
 
-    <section class="card">
+    <section class="card compact-baselines">
       <div class="card-head">
         <h2>基线版本</h2>
         <div id="stats" class="stats"></div>
@@ -588,7 +691,7 @@
       <div id="list" class="table-wrap"></div>
     </section>
 
-    <section class="card">
+    <section class="card primary-compare">
       <div class="card-head">
         <h2>基线比对</h2>
         <div class="muted">基础信息和任职明细逐字段比对，截图时间按弱差异处理</div>
@@ -1350,41 +1453,67 @@
       return fields.some((key) => String(pair.baseline[key] || "") !== String(pair.current[key] || "")) ? ["变化", "changed"] : ["一致", "same"];
     }
 
+    function companyTitle(row) {
+      if (!row) return "—";
+      return row.company_name || "未识别企业";
+    }
+
+    function companySub(row) {
+      if (!row) return "";
+      const parts = [row.business_status, row.role, row.share_ratio].filter(Boolean);
+      return parts.join(" · ");
+    }
+
+    function renderCompanyFieldCompare(pair) {
+      const b = pair.baseline || {};
+      const c = pair.current || {};
+      const fields = [
+        ["企业名称", b.company_name, c.company_name],
+        ["经营状态", b.business_status, c.business_status],
+        ["承担职务", b.role, c.role],
+        ["持股比例", b.share_ratio, c.share_ratio],
+        ["来源图片", b.source_image, c.source_image],
+      ];
+      return `
+        <div class="company-fields">
+          <table>
+            <thead><tr><th>字段</th><th>基线 → 本次</th><th>状态</th></tr></thead>
+            <tbody>
+              ${fields.map(([name, bv, cv]) => {
+                const same = String(bv || "") === String(cv || "");
+                return `<tr><td>${esc(name)}</td><td>${compareValueCell(bv, cv)}</td><td><span class="diff-status ${same ? "same" : "changed"}">${same ? "一致" : "变化"}</span></td></tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
     function renderEmploymentCompare(row) {
       const pairs = alignEmploymentRows(row);
       return `
         <div class="compare-block">
           <h4>任职明细共识结果</h4>
           ${pairs.length ? `
-            <table>
-              <thead>
-                <tr>
-                  <th>企业名称</th>
-                  <th>经营状态</th>
-                  <th>承担职务</th>
-                  <th>持股比例</th>
-                  <th>来源图片</th>
-                  <th>状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${pairs.map((pair) => {
-                  const b = pair.baseline || {};
-                  const c = pair.current || {};
-                  const [label, cls] = rowCompareStatus(pair);
-                  return `
-                    <tr>
-                      <td>${compareValueCell(b.company_name, c.company_name)}</td>
-                      <td>${compareValueCell(b.business_status, c.business_status)}</td>
-                      <td>${compareValueCell(b.role, c.role)}</td>
-                      <td>${compareValueCell(b.share_ratio, c.share_ratio)}</td>
-                      <td>${compareValueCell(b.source_image, c.source_image)}</td>
-                      <td><span class="diff-status ${cls}">${label}</span></td>
-                    </tr>
-                  `;
-                }).join("")}
-              </tbody>
-            </table>
+            <div class="company-compare-list">
+              ${pairs.map((pair) => {
+                const [label, cls] = rowCompareStatus(pair);
+                const open = cls !== "same" ? "open" : "";
+                return `
+                  <details class="company-card" ${open}>
+                    <summary class="company-summary">
+                      <div class="company-pair">
+                        <div class="company-name">${esc(companyTitle(pair.baseline))}<small>${esc(companySub(pair.baseline))}</small></div>
+                        <div class="arrow">→</div>
+                        <div class="company-name">${esc(companyTitle(pair.current))}<small>${esc(companySub(pair.current))}</small></div>
+                      </div>
+                      <span class="diff-status ${cls}">${label}</span>
+                    </summary>
+                    ${renderCompanyFieldCompare(pair)}
+                  </details>
+                `;
+              }).join("")}
+            </div>
           ` : `<div class="empty" style="padding:24px;">无任职企业明细。</div>`}
         </div>
       `;
@@ -1442,37 +1571,39 @@
         ${renderCompareFilters(s)}
         ${renderCompareDetailFilters()}
         <div class="compare-workspace">
-          <div class="diff-table-wrap">
-            <table class="diff-table">
-              <thead>
-                <tr>
-                  <th>状态</th>
-                  <th>风险</th>
-                  <th>编号 / 姓名</th>
-                  <th>身份证号</th>
-                  <th>截图时间</th>
-                  <th>基础信息差异</th>
-                  <th>任职明细差异</th>
-                  <th>图片变化</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${displayRows.length ? displayRows.map((row) => `
-                  <tr class="${row._compare_uid === compareSelectedUid ? "is-selected" : ""}" data-record-row="${esc(row._compare_uid)}">
-                    <td><span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span></td>
-                    <td><span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span></td>
-                    <td><div class="record-main"><strong>${esc(recordId(row))}</strong><span>${esc(recordName(row))}</span></div></td>
-                    <td>${esc(recordMaskedId(row))}</td>
-                    <td>${esc(recordCapture(row))}</td>
-                    <td><div class="diff-chips">${renderBasicDiffChips(row)}</div></td>
-                    <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
-                    <td><div class="diff-chips">${renderImageDiffChips(row)}</div></td>
-                    <td><button class="row-open" type="button" data-select-record="${esc(row._compare_uid)}">查看</button></td>
-                  </tr>
-                `).join("") : `<tr><td colspan="9"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
-              </tbody>
-            </table>
+          <div class="diff-list-panel">
+            <div class="diff-list-head">
+              <span>差异记录 ${displayRows.length} / ${filteredRows.length}</span>
+              <span>点击卡片查看右侧详情</span>
+            </div>
+            <div class="diff-record-list">
+              ${displayRows.length ? displayRows.map((row) => `
+                <button class="diff-card ${row._compare_uid === compareSelectedUid ? "is-selected" : ""}" type="button" data-select-record="${esc(row._compare_uid)}">
+                  <div class="diff-card-top">
+                    <div class="diff-card-title">
+                      <strong>${esc(recordId(row))} · ${esc(recordName(row))}</strong>
+                      <span class="mono">${esc(recordMaskedId(row))}</span>
+                    </div>
+                    <div class="stats">
+                      <span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span>
+                      <span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span>
+                    </div>
+                  </div>
+                  <div class="diff-card-meta">
+                    <span>截图：${esc(recordCapture(row))}</span>
+                    <span>匹配：${esc(row.match_status || "—")}</span>
+                  </div>
+                  <div class="diff-card-section">
+                    <span class="section-label">基础信息</span>
+                    <div class="diff-chips">${renderBasicDiffChips(row)}</div>
+                  </div>
+                  <div class="diff-card-section">
+                    <span class="section-label">任职明细 / 图片</span>
+                    <div class="diff-chips">${renderEmploymentSummaryChips(row)}${renderImageDiffChips(row)}</div>
+                  </div>
+                </button>
+              `).join("") : `<div class="empty">当前筛选条件下没有差异记录。</div>`}
+            </div>
           </div>
           ${renderSelectedCompareRecord(selectedRow, data)}
         </div>

@@ -717,7 +717,7 @@ class BaselineStore:
         if image_diffs and severity == "info":
             severity = "medium"
         requires_review = severity in {"medium", "high", "critical"}
-        if not business_changed and capture_status in {"newer", "same", "filled"} and not image_diffs:
+        if not business_changed and not image_diffs:
             requires_review = False
 
         return {
@@ -845,6 +845,8 @@ class BaselineStore:
         field_diffs: List[Dict[str, Any]],
         employment_diffs: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
+        if not business_changed:
+            return "info"
         if business_changed and capture_status == "older":
             return "critical"
         if any(diff.get("field_name") == "身份证号" for diff in field_diffs):
