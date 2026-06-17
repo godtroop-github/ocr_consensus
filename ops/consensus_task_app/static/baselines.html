@@ -74,6 +74,11 @@
     .primary-compare { order: 1; }
     .compact-baselines { order: 2; }
     .compact-baselines .table-wrap { max-height: 260px; overflow: auto; }
+    .baseline-row { cursor: pointer; }
+    .baseline-row.selected td {
+      background: #EFF7F2;
+      box-shadow: inset 4px 0 0 var(--green-strong);
+    }
     .card + .card { margin-top: 20px; }
     .card-head {
       display: flex;
@@ -764,6 +769,7 @@
         list.innerHTML = `<div class="empty">暂无基线。请先在处理台选择一个已完成任务并保存基线。</div>`;
         return;
       }
+      const selectedId = compareBaseline.value || new URL(location.href).searchParams.get("id") || "";
       list.innerHTML = `
         <table>
           <thead>
@@ -779,7 +785,7 @@
           </thead>
           <tbody>
             ${baselines.map((b) => `
-              <tr>
+              <tr class="baseline-row ${b.id === selectedId ? "selected" : ""}" onclick="selectBaselineForCompare('${esc(b.id)}')">
                 <td class="name-cell">
                   <div class="title">${esc(b.name)}</div>
                   <div class="mono">${esc(b.id)}</div>
@@ -793,7 +799,7 @@
                 <td>${Number(b.image_count || 0)}</td>
                 <td class="mono">${esc(fmtTime(b.created_at))}</td>
                 <td class="right">
-                  <button class="btn" type="button" onclick="selectBaselineForCompare('${esc(b.id)}')">选作基线</button>
+                  ${b.id === selectedId ? `<span class="chip">当前基线</span>` : `<span class="muted">点击选择</span>`}
                 </td>
               </tr>
             `).join("")}
@@ -823,6 +829,7 @@
       const url = new URL(location.href);
       url.searchParams.set("id", id);
       history.replaceState(null, "", url);
+      renderList();
       document.querySelector(".compare-controls").scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
@@ -1745,15 +1752,17 @@
       baselines = data.baselines || [];
       tasks = taskData.tasks || [];
       renderStats();
-      renderList();
       renderCompareControls();
+      renderList();
       const targetId = new URL(location.href).searchParams.get("id");
       if (targetId && baselines.some((b) => b.id === targetId)) {
         compareBaseline.value = targetId;
+        renderList();
       }
     }
 
     compareBtn.addEventListener("click", startCompare);
+    compareBaseline.addEventListener("change", () => selectBaselineForCompare(compareBaseline.value));
     refresh();
   </script>
 </body>
