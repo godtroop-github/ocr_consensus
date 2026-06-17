@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>基线差异详情</title>
+  <style>
+    @font-face { font-family: "OCRSansSC"; src: url("/assets/fonts/SourceHanSansSC-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+    :root {
+      --bg: #F8F6F0; --paper: #FFFDF8; --paper-strong: #fff; --line: #E6E0D4; --line-soft: #EEE8DC;
+      --text: #2F2A24; --muted: #7B746A; --primary: #7F9D8C; --primary-soft: #E7F0EA;
+      --ok: #4F7A5F; --bad: #B46458; --warn: #9A7A3F; --danger-bg: #F8E7E3; --warning-bg: #F9F0D8; --success-bg: #E8F3EC;
+      --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--text); font-family: var(--font-ui); font-variant-numeric: tabular-nums; background: radial-gradient(circle at 7% 2%, rgba(221,235,226,.7), transparent 270px), linear-gradient(180deg, rgba(255,253,248,.8), rgba(248,246,240,.98)), var(--bg); }
+    .container { width: min(1480px, calc(100vw - 36px)); margin: 0 auto; padding: 22px 0 40px; }
+    .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: start; margin-bottom: 12px; }
+    h1 { margin: 0; font-size: 24px; font-weight: 560; letter-spacing: -.2px; }
+    .sub { margin-top: 6px; color: var(--muted); font-size: 13px; }
+    .actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: #5F574E; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 12px; text-decoration: none; }
+    .btn:hover { border-color: var(--primary); background: var(--primary-soft); color: var(--text); }
+    .bar { position: sticky; top: 8px; z-index: 10; display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 16px; background: rgba(255,253,248,.88); backdrop-filter: blur(10px); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .chip { display: inline-flex; align-items: center; border: 1px solid var(--line-soft); border-radius: 999px; background: var(--paper); color: var(--muted); padding: 4px 9px; font-size: 12px; white-space: nowrap; }
+    .chip.ok { color: var(--ok); background: var(--success-bg); } .chip.warn { color: var(--warn); background: var(--warning-bg); } .chip.bad { color: var(--bad); background: var(--danger-bg); }
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    .image-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .panel { border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,.94); overflow: hidden; }
+    .panel h2 { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line-soft); background: rgba(243,240,232,.5); font-size: 15px; font-weight: 650; }
+    .image-frame { height: min(66vh, 760px); min-height: 460px; display: grid; place-items: center; background: #F2EFE7; overflow: auto; }
+    .image-frame img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in; }
+    .image-frame img.zoomed { height: auto; max-height: none; cursor: zoom-out; }
+    .image-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line-soft); background: var(--paper); }
+    .icon { width: 28px; height: 28px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 999px; background: #fff; cursor: pointer; color: var(--primary); font-weight: 900; }
+    .icon:disabled { opacity: .35; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: rgba(243,240,232,.55); font-size: 12px; font-weight: 800; white-space: nowrap; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); font-size: 12px; }
+    .compare-cell { display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr); gap: 8px; align-items: stretch; }
+    .box { border: 1px solid var(--line-soft); border-radius: 10px; padding: 7px 8px; background: var(--paper); overflow-wrap: anywhere; }
+    .changed .box.base { background: #FFF8E9; border-color: #E9D9B8; }
+    .changed .box.curr { background: #FFF1EE; border-color: #EAC8C1; }
+    .same .box { background: #F4FAF6; border-color: #CFE3D6; }
+    .arr { color: var(--muted); display: grid; place-items: center; }
+    details.company { margin: 10px 12px; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--paper); overflow: hidden; }
+    details.company[open] { background: #fff; border-color: #D9D0C1; }
+    summary.company-head { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 11px 12px; }
+    summary.company-head::-webkit-details-marker { display: none; }
+    .company-pair { display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr); gap: 8px; align-items: center; }
+    .company-name { font-weight: 700; overflow-wrap: anywhere; } .company-name small { display: block; color: var(--muted); font-weight: 400; margin-top: 2px; }
+    .empty { padding: 34px; text-align: center; color: var(--muted); }
+    @media (max-width: 980px) { .head, .image-pair { grid-template-columns: 1fr; } .bar { position: static; flex-direction: column; align-items: flex-start; } .image-frame { min-height: 320px; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="head">
+      <div>
+        <h1 id="title">基线差异详情</h1>
+        <div id="subtitle" class="sub">加载中...</div>
+      </div>
+      <div class="actions">
+        <a id="backLink" class="btn" href="/baselines">返回比对列表</a>
+        <a class="btn" href="/">返回处理台</a>
+      </div>
+    </div>
+    <div class="bar">
+      <div id="context" class="chips"></div>
+      <div class="actions">
+        <button id="prevBtn" class="btn" type="button">上一条</button>
+        <button id="nextBtn" class="btn" type="button">下一条</button>
+      </div>
+    </div>
+    <main id="app" class="grid"><div class="empty">正在加载比对详情...</div></main>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const baselineId = params.get('baseline_id') || '';
+    const taskId = params.get('task_id') || '';
+    let idx = Number(params.get('idx') || 0);
+    let compareData = null;
+    let row = null;
+    let imageIndex = { baseline: 0, current: 0 };
+    const $ = (id) => document.getElementById(id);
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function chip(text, cls='') { return `<span class="chip ${cls}">${esc(text)}</span>`; }
+    function severityLabel(v) { return ({info:'提示',low:'低',medium:'中',high:'高',critical:'极高'}[v] || v || '—'); }
+    function statusLabel(r) { if (r.match_status === 'unmatched_new') return '新增'; if (r.match_status === 'unmatched_missing') return '缺失'; if (r.requires_review) return '待复核'; return '正常'; }
+    function statusClass(r) { if (r.requires_review) return 'bad'; if (r.business_diff_status === 'changed') return 'warn'; return 'ok'; }
+    function rec(side) { return row && row[side] || {}; }
+    function recordName() { return rec('current').person_name || rec('baseline').person_name || '—'; }
+    function recordId() { return rec('current').file_id || rec('baseline').file_id || '—'; }
+    function recordCapture(r) { return [r.capture_date, r.capture_time].filter(Boolean).join(' ') || '—'; }
+    function imageList(side) { const r = rec(side); const list = [...new Set([...(row[`${side}_images`] || []), r.file_name].filter(Boolean))]; return list; }
+    function imageUrl(side, file) { const sourceTask = side === 'baseline' ? (compareData.baseline && compareData.baseline.source_task_id) : (compareData.task && compareData.task.id); return sourceTask && file ? `/runs/${encodeURIComponent(sourceTask)}/dashboard/images/${encodeURIComponent(file)}` : ''; }
+    function imagePanel(side, label) {
+      const list = imageList(side); const total = list.length; const cur = Math.max(0, Math.min(imageIndex[side] || 0, Math.max(0, total - 1))); const file = total ? list[cur] : ''; const src = imageUrl(side, file);
+      return `<section class="panel"><h2>${esc(label)}${file ? ` · ${esc(file)}` : ''}</h2><div class="image-frame">${src ? `<img src="${esc(src)}" alt="${esc(label)}" onclick="this.classList.toggle('zoomed')" />` : `<div class="empty">图片不可用</div>`}</div><div class="image-tools"><button class="icon" data-img-side="${side}" data-delta="-1" ${total <= 1 ? 'disabled' : ''}>‹</button><span class="mono">${total ? `${cur + 1} / ${total}` : '0 / 0'}</span><button class="icon" data-img-side="${side}" data-delta="1" ${total <= 1 ? 'disabled' : ''}>›</button></div></section>`;
+    }
+    function compareCell(a, b) { const av = a || '—', bv = b || '—'; const same = String(av) === String(bv); return `<div class="compare-cell ${same ? 'same' : 'changed'}"><div class="box base">${esc(av)}</div><div class="arr">→</div><div class="box curr">${esc(bv)}</div></div>`; }
+    function basicSection() {
+      if (row.match_status === 'unmatched_new' || row.match_status === 'unmatched_missing') {
+        const r = row.current || row.baseline || {}; const title = row.match_status === 'unmatched_new' ? '新增记录共识结果' : '缺失记录基线结果';
+        const fields = [['姓名',r.person_name],['身份证号',r.masked_id],['截图时间',recordCapture(r)],['相关企业',r.related_count],['任职',r.employment_count],['参股',r.shareholding_count],['复核状态',r.review_status]];
+        return `<section class="panel"><h2>${title}</h2><table><tbody>${fields.map(([k,v]) => `<tr><th>${esc(k)}</th><td><strong>${esc(v || '—')}</strong></td></tr>`).join('')}</tbody></table></section>`;
+      }
+      const b = rec('baseline'), c = rec('current'); const fields = [['姓名',b.person_name,c.person_name],['身份证号',b.masked_id,c.masked_id],['截图时间',recordCapture(b),recordCapture(c)],['相关企业',b.related_count,c.related_count],['任职',b.employment_count,c.employment_count],['参股',b.shareholding_count,c.shareholding_count],['复核状态',b.review_status,c.review_status]];
+      return `<section class="panel"><h2>基础信息共识结果</h2><table><thead><tr><th>字段</th><th>基线 → 本次</th></tr></thead><tbody>${fields.map(([k,a,b]) => `<tr><td>${esc(k)}</td><td>${compareCell(a,b)}</td></tr>`).join('')}</tbody></table></section>`;
+    }
+    function keyOf(item, i) { const key = item && item.company_key || ''; const name = item && item.company_name || ''; if (key && !key.includes('未识别企业') && !name.includes('未识别企业')) return `k:${key}`; return `p:${item && item.row_index || i}`; }
+    function compatible(a,b) { a=String(a||'').replace(/\s+/g,''); b=String(b||'').replace(/\s+/g,''); if(!a||!b||a.includes('未识别企业')||b.includes('未识别企业')) return false; if(a.includes(b)||b.includes(a)) return Math.min(a.length,b.length)>=6; let m=Array.from({length:a.length+1},()=>Array(b.length+1).fill(0)),best=0; for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)if(a[i-1]===b[j-1]){m[i][j]=m[i-1][j-1]+1;best=Math.max(best,m[i][j]);} return best/Math.max(a.length,b.length)>=.86; }
+    function alignEmployment() { const bs=row.baseline_employment||[], cs=row.current_employment||[], used=new Set(), pairs=[]; bs.forEach((b,bi)=>{let mi=cs.findIndex((c,i)=>!used.has(i)&&keyOf(b,bi)===keyOf(c,i)); if(mi<0) mi=cs.findIndex((c,i)=>!used.has(i)&&compatible(b.company_key,c.company_key)); if(mi>=0){used.add(mi);pairs.push({baseline:b,current:cs[mi]});}else pairs.push({baseline:b,current:null});}); cs.forEach((c,i)=>{if(!used.has(i))pairs.push({baseline:null,current:c});}); return pairs; }
+    function companyStatus(pair) { if(!pair.baseline) return ['新增','warn']; if(!pair.current) return ['缺失','warn']; return ['company_name','business_status','role','share_ratio'].some(k=>String(pair.baseline[k]||'')!==String(pair.current[k]||'')) ? ['变化','bad'] : ['一致','ok']; }
+    function oneSideEmployment() { const rows = row.match_status === 'unmatched_new' ? row.current_employment || [] : row.baseline_employment || []; return `<section class="panel"><h2>任职明细共识结果</h2>${rows.length ? `<table><thead><tr><th>企业名称</th><th>经营状态</th><th>承担职务</th><th>持股比例</th><th>来源图片</th></tr></thead><tbody>${rows.map(e => `<tr><td><strong>${esc(e.company_name||'未识别企业')}</strong></td><td>${esc(e.business_status||'—')}</td><td>${esc(e.role||'—')}</td><td>${esc(e.share_ratio||'—')}</td><td class="mono">${esc(e.source_image||'—')}</td></tr>`).join('')}</tbody></table>` : `<div class="empty">无任职企业明细。</div>`}</section>`; }
+    function employmentSection() { if(row.match_status === 'unmatched_new' || row.match_status === 'unmatched_missing') return oneSideEmployment(); const pairs=alignEmployment(); return `<section class="panel"><h2>任职明细共识结果</h2>${pairs.length ? pairs.map((p,i)=>{const [label,cls]=companyStatus(p); const b=p.baseline||{}, c=p.current||{}; const fields=[['企业名称',b.company_name,c.company_name],['经营状态',b.business_status,c.business_status],['承担职务',b.role,c.role],['持股比例',b.share_ratio,c.share_ratio],['来源图片',b.source_image,c.source_image]]; return `<details class="company" ${cls!=='ok'?'open':''}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name||'—')}<small>${esc([b.business_status,b.role,b.share_ratio].filter(Boolean).join(' · '))}</small></div><div class="arr">→</div><div class="company-name">${esc(c.company_name||'—')}<small>${esc([c.business_status,c.role,c.share_ratio].filter(Boolean).join(' · '))}</small></div></div>${chip(label,cls)}</summary><table><tbody>${fields.map(([k,a,b])=>`<tr><td>${esc(k)}</td><td>${compareCell(a,b)}</td></tr>`).join('')}</tbody></table></details>`;}).join('') : `<div class="empty">无任职企业明细。</div>`}</section>`; }
+    function render() { if(!row){$('app').innerHTML='<div class="empty">未找到该差异记录。</div>'; return;} $('title').textContent = `${recordId()} · ${recordName()}`; $('subtitle').textContent = `${compareData.baseline.name || compareData.baseline.id}  对比  ${compareData.task.name || compareData.task.id}`; $('context').innerHTML = [chip(statusLabel(row), statusClass(row)), chip(`风险：${severityLabel(row.severity)}`), chip(`记录 ${idx + 1} / ${compareData.records.length}`), chip(`匹配：${row.match_status || '—'}`)].join(''); $('backLink').href = `/baselines?id=${encodeURIComponent(baselineId)}`; $('prevBtn').disabled = idx <= 0; $('nextBtn').disabled = idx >= compareData.records.length - 1; $('app').innerHTML = `<div class="image-pair">${imagePanel('baseline','基线批次图片')}${imagePanel('current','本次批次图片')}</div>${basicSection()}${employmentSection()}`; document.querySelectorAll('[data-img-side]').forEach(btn => btn.onclick = () => { const side=btn.dataset.imgSide, total=imageList(side).length; if(total <= 1) return; imageIndex[side]=(Number(imageIndex[side]||0)+Number(btn.dataset.delta||0)+total)%total; render(); }); }
+    async function load() { if(!baselineId || !taskId){$('app').innerHTML='<div class="empty">缺少 baseline_id 或 task_id。</div>'; return;} const res = await fetch('/api/compare', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ baseline_id: baselineId, task_id: taskId }) }); const data = await res.json().catch(()=>({})); if(!res.ok){$('app').innerHTML=`<div class="empty">${esc(data.detail || '加载失败')}</div>`; return;} compareData=data; idx=Math.max(0, Math.min(idx, data.records.length-1)); row=data.records[idx]; render(); }
+    $('prevBtn').onclick = () => { if(idx>0){ location.href = `/static/baseline_compare_detail.html?baseline_id=${encodeURIComponent(baselineId)}&task_id=${encodeURIComponent(taskId)}&idx=${idx-1}`; } };
+    $('nextBtn').onclick = () => { if(compareData && idx < compareData.records.length - 1){ location.href = `/static/baseline_compare_detail.html?baseline_id=${encodeURIComponent(baselineId)}&task_id=${encodeURIComponent(taskId)}&idx=${idx+1}`; } };
+    load();
+  </script>
+</body>
+</html>

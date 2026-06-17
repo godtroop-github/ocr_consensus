@@ -688,14 +688,6 @@
       </div>
     </div>
 
-    <section class="card compact-baselines">
-      <div class="card-head">
-        <h2>基线版本</h2>
-        <div id="stats" class="stats"></div>
-      </div>
-      <div id="list" class="table-wrap"></div>
-    </section>
-
     <section class="card primary-compare">
       <div class="card-head">
         <h2>基线比对</h2>
@@ -832,7 +824,6 @@
       const url = new URL(location.href);
       url.searchParams.set("id", id);
       history.replaceState(null, "", url);
-      renderList();
       document.querySelector(".compare-controls").scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
@@ -866,7 +857,6 @@
       const url = new URL(location.href);
       url.searchParams.set("id", nextBaseline.id);
       history.replaceState(null, "", url);
-      renderList();
       startCompare();
     }
 
@@ -1316,6 +1306,7 @@
 
     function prepareCompareRows(rows) {
       rows.forEach((row, idx) => {
+        row._compare_idx = idx;
         if (!row._compare_uid) row._compare_uid = compareRowUid(row, idx);
       });
       return rows;
@@ -1654,145 +1645,101 @@
       `;
     }
 
+    function compareDetailUrl(row, data) {
+      const params = new URLSearchParams({
+        baseline_id: compareBaseline.value || (data.baseline && data.baseline.id) || "",
+        task_id: compareTask.value || (data.task && data.task.id) || "",
+        idx: String(row._compare_idx ?? ""),
+      });
+      return `/static/baseline_compare_detail.html?${params.toString()}`;
+    }
+
     function renderCompareResult(data) {
       lastCompareData = data;
       const s = data.summary || {};
       const rows = prepareCompareRows(data.records || []);
       const filteredRows = applyCompareDetailFilters(compareRowsByFilter(rows, compareFilter));
-      if (!filteredRows.some((row) => row._compare_uid === compareSelectedUid)) {
-        compareSelectedUid = filteredRows[0] ? filteredRows[0]._compare_uid : "";
-      }
-      const selectedRow = filteredRows.find((row) => row._compare_uid === compareSelectedUid) || null;
-      const displayRows = filteredRows.slice(0, 500);
+      const displayRows = filteredRows.slice(0, 800);
       compareResult.innerHTML = `
-        <div class="compare-summary">
-          <div class="metric accent"><div class="k">总记录</div><div class="v">${Number(s.total_records || 0)}</div><div class="hint">基线 ${Number(s.baseline_records || 0)} / 本次 ${Number(s.current_records || 0)}</div></div>
-          <div class="metric accent"><div class="k">业务一致</div><div class="v">${Number(s.same_records || 0)}</div><div class="hint">不含新增和缺失</div></div>
-          <div class="metric warn"><div class="k">业务变化</div><div class="v">${Number(s.business_changed_records || 0)}</div><div class="hint">基础或任职字段变化</div></div>
-          <div class="metric warn"><div class="k">任职变化</div><div class="v">${Number(s.employment_changed_records || 0)}</div><div class="hint">企业明细逐字段差异</div></div>
-          <div class="metric bad"><div class="k">新增 / 缺失</div><div class="v">${Number(s.new_records || 0)} / ${Number(s.missing_records || 0)}</div><div class="hint">记录级变化</div></div>
-          <div class="metric bad"><div class="k">需复核</div><div class="v">${Number(s.requires_review || 0)}</div><div class="hint">中高风险或业务变化</div></div>
-        </div>
-        ${renderCompareViz(s)}
         ${renderCompareFilters(s)}
         ${renderCompareDetailFilters()}
-        <div class="compare-workspace">
-          <div class="diff-list-panel">
-            <div class="diff-list-head">
-              <span>差异记录 ${displayRows.length} / ${filteredRows.length}</span>
-              <span>点击卡片查看右侧详情</span>
-            </div>
-            <div class="diff-record-list">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>状态</th>
+                <th>风险</th>
+                <th>编号</th>
+                <th>姓名</th>
+                <th>身份证号</th>
+                <th>截图时间</th>
+                <th>基础信息差异</th>
+                <th>任职明细差异</th>
+                <th class="right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
               ${displayRows.length ? displayRows.map((row) => `
-                <button class="diff-card ${row._compare_uid === compareSelectedUid ? "is-selected" : ""}" type="button" data-select-record="${esc(row._compare_uid)}">
-                  <div class="diff-card-top">
-                    <div class="diff-card-title">
-                      <strong>${esc(recordId(row))} · ${esc(recordName(row))}</strong>
-                      <span class="mono">${esc(recordMaskedId(row))}</span>
-                    </div>
-                    <div class="stats">
-                      <span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span>
-                      <span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span>
-                    </div>
-                  </div>
-                  <div class="diff-card-meta">
-                    <span>截图：${esc(recordCapture(row))}</span>
-                    <span>匹配：${esc(row.match_status || "—")}</span>
-                  </div>
-                  <div class="diff-card-section">
-                    <span class="section-label">基础信息</span>
-                    <div class="diff-chips">${renderBasicDiffChips(row)}</div>
-                  </div>
-                  <div class="diff-card-section">
-                    <span class="section-label">任职明细</span>
-                    <div class="diff-chips">${renderEmploymentSummaryChips(row)}</div>
-                  </div>
-                </button>
-              `).join("") : `<div class="empty">当前筛选条件下没有差异记录。</div>`}
-            </div>
-          </div>
-          ${renderSelectedCompareRecord(selectedRow, data)}
+                <tr>
+                  <td><span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span></td>
+                  <td><span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span></td>
+                  <td class="mono">${esc(recordId(row))}</td>
+                  <td><strong>${esc(recordName(row))}</strong></td>
+                  <td>${esc(recordMaskedId(row))}</td>
+                  <td>${esc(recordCapture(row))}</td>
+                  <td><div class="diff-chips">${renderBasicDiffChips(row)}</div></td>
+                  <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
+                  <td class="right"><a class="btn" href="${esc(compareDetailUrl(row, data))}">详情</a></td>
+                </tr>
+              `).join("") : `<tr><td colspan="9"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
+            </tbody>
+          </table>
         </div>
         <div class="compare-note">
           当前展示：${esc(compareFilterLabel(s))}，筛选后 ${filteredRows.length} 条。
-          ${filteredRows.length > 500 ? "列表仅展示前 500 条。" : ""}
-          截图时间为弱差异；详情页仅展示基线和本次的共识结构化结果。
+          ${filteredRows.length > 800 ? "列表仅展示前 800 条。" : ""}
+          详情页只比较共识后的结构化结果，图片仅作为核验预览。
         </div>
       `;
       compareResult.querySelectorAll("[data-compare-filter]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const next = btn.dataset.compareFilter || "review";
           compareFilter = compareFilter === next ? "all" : next;
-          compareSelectedUid = "";
           renderCompareResult(lastCompareData);
         });
-      });
-      compareResult.querySelectorAll("[data-select-record], [data-record-row]").forEach((el) => {
-        el.addEventListener("click", () => {
-          const nextUid = el.dataset.selectRecord || el.dataset.recordRow || "";
-          if (nextUid !== compareSelectedUid) compareImageIndex = { baseline: 0, current: 0 };
-          compareSelectedUid = nextUid;
-          renderCompareResult(lastCompareData);
-        });
-      });
-      compareResult.querySelectorAll("[data-image-nav]").forEach((btn) => {
-        btn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          const side = btn.dataset.imageNav;
-          const delta = Number(btn.dataset.delta || 0);
-          const row = (lastCompareData.records || []).find((item) => item._compare_uid === compareSelectedUid);
-          const total = row ? imageList(row, side).length : 0;
-          if (!side || total <= 1) return;
-          compareImageIndex[side] = (Number(compareImageIndex[side] || 0) + delta + total) % total;
-          renderCompareResult(lastCompareData);
-        });
-      });
-      compareResult.querySelectorAll(".image-frame img").forEach((img) => {
-        img.addEventListener("click", () => img.classList.toggle("zoomed"));
       });
       const search = compareResult.querySelector("#compareSearch");
       search && search.addEventListener("input", () => {
         compareDetailFilters.q = search.value || "";
       });
       search && search.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") {
-          compareSelectedUid = "";
-          renderCompareResult(lastCompareData);
-        }
+        if (ev.key === "Enter") renderCompareResult(lastCompareData);
       });
       const apply = compareResult.querySelector("#compareApplyFilters");
-      apply && apply.addEventListener("click", () => {
-        compareSelectedUid = "";
-        renderCompareResult(lastCompareData);
-      });
+      apply && apply.addEventListener("click", () => renderCompareResult(lastCompareData));
       const business = compareResult.querySelector("#compareBusinessFilter");
       business && business.addEventListener("change", () => {
         compareDetailFilters.business = business.value || "";
-        compareSelectedUid = "";
         renderCompareResult(lastCompareData);
       });
       const capture = compareResult.querySelector("#compareCaptureFilter");
       capture && capture.addEventListener("change", () => {
         compareDetailFilters.capture = capture.value || "";
-        compareSelectedUid = "";
         renderCompareResult(lastCompareData);
       });
       const severity = compareResult.querySelector("#compareSeverityFilter");
       severity && severity.addEventListener("change", () => {
         compareDetailFilters.severity = severity.value || "";
-        compareSelectedUid = "";
         renderCompareResult(lastCompareData);
       });
       const reviewOnly = compareResult.querySelector("#compareReviewOnly");
       reviewOnly && reviewOnly.addEventListener("change", () => {
         compareDetailFilters.reviewOnly = !!reviewOnly.checked;
-        compareSelectedUid = "";
         renderCompareResult(lastCompareData);
       });
       const clear = compareResult.querySelector("#compareClearFilters");
       clear && clear.addEventListener("click", () => {
         compareDetailFilters = { q: "", business: "", capture: "", severity: "", reviewOnly: false };
-        compareSelectedUid = "";
         renderCompareResult(lastCompareData);
       });
     }
@@ -1850,13 +1797,10 @@
       }
       baselines = data.baselines || [];
       tasks = taskData.tasks || [];
-      renderStats();
       renderCompareControls();
-      renderList();
       const targetId = new URL(location.href).searchParams.get("id");
       if (targetId && baselines.some((b) => b.id === targetId)) {
         compareBaseline.value = targetId;
-        renderList();
       }
     }
 
