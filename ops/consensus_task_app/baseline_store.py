@@ -611,37 +611,57 @@ class BaselineStore:
         rows: List[Dict[str, Any]],
         records: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
-        person_to_record: Dict[str, str] = {}
-        image_to_record: Dict[str, str] = {}
+        person_to_records: Dict[str, List[str]] = {}
+        image_to_records: Dict[str, List[str]] = {}
+
+        def add_mapping(mapping: Dict[str, List[str]], key: str, record_id: str) -> None:
+            key = _to_text(key)
+            record_id = _to_text(record_id)
+            if not key or not record_id:
+                return
+            mapping.setdefault(key, [])
+            if record_id not in mapping[key]:
+                mapping[key].append(record_id)
+
         for rec in records or []:
             record_id = _to_text(rec.get("id"))
             file_id = _to_text(rec.get("file_id"))
             person_name = _to_text(rec.get("person_name"))
             record_key = _to_text(rec.get("record_key"))
             if file_id and person_name:
-                person_to_record[f"{file_id}-{person_name}"] = record_id
+                add_mapping(person_to_records, f"{file_id}-{person_name}", record_id)
             if record_key:
-                person_to_record[record_key] = record_id
+                add_mapping(person_to_records, record_key, record_id)
             for image in self._record_images(rec, []):
-                image_to_record[self._image_key(image)] = record_id
+                add_mapping(image_to_records, self._image_key(image), record_id)
 
         grouped: Dict[str, List[Dict[str, Any]]] = {}
         for idx, row in enumerate(rows, start=1):
-            record_id = _to_text(row.get("baseline_record_id"))
+            target_ids: List[str] = []
+
+            def add_target(record_id: str) -> None:
+                record_id = _to_text(record_id)
+                if record_id and record_id not in target_ids:
+                    target_ids.append(record_id)
+
+            add_target(row.get("baseline_record_id"))
             evidence = row.get("evidence_summary") if isinstance(row.get("evidence_summary"), dict) else {}
-            if not record_id:
-                person_key = _to_text(evidence.get("人员键") or row.get("人员键"))
-                if not person_key:
-                    file_no = _to_text(evidence.get("文件编号") or row.get("文件编号"))
-                    name = _to_text(evidence.get("姓名") or row.get("姓名"))
-                    person_key = f"{file_no}-{name}" if file_no and name else ""
-                record_id = person_to_record.get(person_key, "")
-            if not record_id:
-                source_image = _to_text(row.get("source_image") or evidence.get("来源文件") or evidence.get("文件名"))
-                record_id = image_to_record.get(self._image_key(source_image), "")
-            if not record_id:
+            person_key = _to_text(evidence.get("人员键") or row.get("人员键"))
+            if not person_key:
+                file_no = _to_text(evidence.get("文件编号") or row.get("文件编号"))
+                name = _to_text(evidence.get("姓名") or row.get("姓名"))
+                person_key = f"{file_no}-{name}" if file_no and name else ""
+            for record_id in person_to_records.get(person_key, []):
+                add_target(record_id)
+            source_image = _to_text(row.get("source_image") or evidence.get("来源文件") or evidence.get("文件名"))
+            for image in re.split(r"[|,，;；]+", source_image):
+                for record_id in image_to_records.get(self._image_key(image), []):
+                    add_target(record_id)
+            if not target_ids:
                 continue
-            grouped.setdefault(record_id, []).append(self._normalize_employment_row(row, idx))
+            normalized = self._normalize_employment_row(row, idx)
+            for record_id in target_ids:
+                grouped.setdefault(record_id, []).append(normalized)
         return grouped
 
     def _current_employment_by_record_id(
@@ -649,39 +669,60 @@ class BaselineStore:
         task_dir: Path,
         current_records: List[Dict[str, Any]],
     ) -> Dict[str, List[Dict[str, Any]]]:
-        person_to_record: Dict[str, str] = {}
-        image_to_record: Dict[str, str] = {}
+        person_to_records: Dict[str, List[str]] = {}
+        image_to_records: Dict[str, List[str]] = {}
+
+        def add_mapping(mapping: Dict[str, List[str]], key: str, record_id: str) -> None:
+            key = _to_text(key)
+            record_id = _to_text(record_id)
+            if not key or not record_id:
+                return
+            mapping.setdefault(key, [])
+            if record_id not in mapping[key]:
+                mapping[key].append(record_id)
+
         for rec in current_records:
             file_id = _to_text(rec.get("file_id"))
             person_name = _to_text(rec.get("person_name"))
             record_id = _to_text(rec.get("id"))
             record_key = _to_text(rec.get("record_key"))
             if file_id and person_name:
-                person_to_record[f"{file_id}-{person_name}"] = record_id
+                add_mapping(person_to_records, f"{file_id}-{person_name}", record_id)
             if record_key:
-                person_to_record[record_key] = record_id
+                add_mapping(person_to_records, record_key, record_id)
             for image in self._record_images(rec, []):
-                image_to_record[self._image_key(image)] = record_id
+                add_mapping(image_to_records, self._image_key(image), record_id)
 
         grouped: Dict[str, List[Dict[str, Any]]] = {}
         for idx, row in enumerate(self._load_employment_rows(task_dir), start=1):
+            target_ids: List[str] = []
+
+            def add_target(record_id: str) -> None:
+                record_id = _to_text(record_id)
+                if record_id and record_id not in target_ids:
+                    target_ids.append(record_id)
+
             person_key = _to_text(row.get("人员键"))
             if not person_key:
                 file_no = _to_text(row.get("文件编号"))
                 name = _to_text(row.get("姓名"))
                 person_key = f"{file_no}-{name}" if file_no and name else ""
-            record_id = person_to_record.get(person_key)
-            if not record_id:
-                file_no = _to_text(row.get("文件编号"))
-                name = _to_text(row.get("姓名"))
-                if file_no and name:
-                    record_id = person_to_record.get(_record_key(file_no, name, "", _to_text(row.get("文件名"))))
-            if not record_id:
-                source_image = _to_text(row.get("来源文件") or row.get("文件名"))
-                record_id = image_to_record.get(self._image_key(source_image), "")
-            if not record_id:
+            for record_id in person_to_records.get(person_key, []):
+                add_target(record_id)
+            file_no = _to_text(row.get("文件编号"))
+            name = _to_text(row.get("姓名"))
+            if file_no and name:
+                for record_id in person_to_records.get(_record_key(file_no, name, "", _to_text(row.get("文件名"))), []):
+                    add_target(record_id)
+            source_image = _to_text(row.get("来源文件") or row.get("文件名"))
+            for image in re.split(r"[|,，;；]+", source_image):
+                for record_id in image_to_records.get(self._image_key(image), []):
+                    add_target(record_id)
+            if not target_ids:
                 continue
-            grouped.setdefault(record_id, []).append(self._normalize_employment_row(row, idx))
+            normalized = self._normalize_employment_row(row, idx)
+            for record_id in target_ids:
+                grouped.setdefault(record_id, []).append(normalized)
         return grouped
 
     def _normalize_employment_row(self, row: Dict[str, Any], idx: int) -> Dict[str, Any]:
@@ -837,14 +878,12 @@ class BaselineStore:
         employment_diffs = employment_diff["diffs"]
         baseline_images = self._record_images(baseline, baseline_employment or [])
         current_images = self._record_images(current, current_employment or [])
-        image_diffs = self._diff_images(baseline_images, current_images)
+        image_diffs: List[Dict[str, Any]] = []
         business_changed = bool(field_diffs or employment_diffs)
         business_status = "changed" if business_changed else "same"
         severity = self._record_severity(business_changed, capture_status, field_diffs, employment_diffs)
-        if image_diffs and severity == "info":
-            severity = "medium"
         requires_review = severity in {"medium", "high", "critical"}
-        if not business_changed and not image_diffs:
+        if not business_changed:
             requires_review = False
 
         return {
@@ -875,7 +914,6 @@ class BaselineStore:
     ) -> Dict[str, Any]:
         employment_diffs = self._employment_added_diffs(current_employment or [])
         current_images = self._record_images(current, current_employment or [])
-        image_diffs = self._image_added_diffs(current_images)
         return {
             "record_key": current.get("record_key"),
             "match_status": "unmatched_new",
@@ -884,19 +922,10 @@ class BaselineStore:
             "ocr_quality_diff_status": "same",
             "severity": "high",
             "requires_review": True,
-            "field_diffs": [
-                {
-                    "section": "record",
-                    "field_name": "记录",
-                    "baseline_value": "",
-                    "current_value": current.get("record_key"),
-                    "diff_type": "record_added",
-                    "severity": "high",
-                }
-            ],
-            "employment_diffs": employment_diffs,
+            "field_diffs": [],
+            "employment_diffs": [],
             "employment_summary": self._employment_summary([], current_employment or [], 0, 0, len(current_employment or []), 0),
-            "image_diffs": image_diffs,
+            "image_diffs": [],
             "diff_summary": ["新增记录"],
             "baseline": None,
             "current": self._public_record(current),
@@ -913,7 +942,6 @@ class BaselineStore:
     ) -> Dict[str, Any]:
         employment_diffs = self._employment_missing_diffs(baseline_employment or [])
         baseline_images = self._record_images(baseline, baseline_employment or [])
-        image_diffs = self._image_missing_diffs(baseline_images)
         return {
             "record_key": baseline.get("record_key"),
             "match_status": "unmatched_missing",
@@ -922,19 +950,10 @@ class BaselineStore:
             "ocr_quality_diff_status": "same",
             "severity": "high",
             "requires_review": True,
-            "field_diffs": [
-                {
-                    "section": "record",
-                    "field_name": "记录",
-                    "baseline_value": baseline.get("record_key"),
-                    "current_value": "",
-                    "diff_type": "record_missing",
-                    "severity": "high",
-                }
-            ],
-            "employment_diffs": employment_diffs,
+            "field_diffs": [],
+            "employment_diffs": [],
             "employment_summary": self._employment_summary(baseline_employment or [], [], 0, 0, 0, len(baseline_employment or [])),
-            "image_diffs": image_diffs,
+            "image_diffs": [],
             "diff_summary": ["基线记录缺失"],
             "baseline": self._public_record(baseline),
             "current": None,

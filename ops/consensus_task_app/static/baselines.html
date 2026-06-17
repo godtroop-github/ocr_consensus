@@ -1097,7 +1097,6 @@
       if (key === "review") return rows.filter((r) => r.requires_review);
       if (key === "business") return rows.filter((r) => r.business_diff_status === "changed");
       if (key === "employment") return rows.filter((r) => (r.employment_diffs || []).length);
-      if (key === "image") return rows.filter((r) => (r.image_diffs || []).length);
       if (key === "new") return rows.filter((r) => r.business_diff_status === "new");
       if (key === "missing") return rows.filter((r) => r.business_diff_status === "missing");
       if (key === "older") return rows.filter((r) => r.capture_time_diff_status === "older");
@@ -1147,7 +1146,6 @@
         ["review", "需复核", s.requires_review],
         ["business", "业务变化", s.business_changed_records],
         ["employment", "任职变化", s.employment_changed_records],
-        ["image", "图片变化", s.image_changed_records],
         ["new", "新增", s.new_records],
         ["missing", "缺失", s.missing_records],
         ["older", "疑似旧截图", s.capture_time_older],
@@ -1283,9 +1281,6 @@
           c.share_ratio
         );
       }
-      for (const diff of row.image_diffs || []) {
-        parts.push(diff.field_name, diff.baseline_value, diff.current_value, diff.diff_type);
-      }
       parts.push(...(row.baseline_images || []), ...(row.current_images || []));
       return parts.map((x) => String(x || "").toLowerCase()).join(" ");
     }
@@ -1365,14 +1360,7 @@
     }
 
     function renderImageDiffChips(row) {
-      const diffs = row.image_diffs || [];
-      if (!diffs.length) return `<span class="diff-chip same">图片一致</span>`;
-      const added = diffs.filter((d) => d.diff_type === "image_added").length;
-      const missing = diffs.filter((d) => d.diff_type === "image_missing").length;
-      return [
-        added ? `<span class="diff-chip changed">图片增加 ${added}</span>` : "",
-        missing ? `<span class="diff-chip bad">图片减少 ${missing}</span>` : "",
-      ].filter(Boolean).join("");
+      return "";
     }
 
     function recordStatusLabel(row) {
@@ -1436,6 +1424,29 @@
     }
 
     function renderBasicCompare(row) {
+      if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") {
+        const record = row.current || row.baseline || {};
+        const title = row.match_status === "unmatched_new" ? "新增记录共识结果" : "减少记录基线结果";
+        const capture = [record.capture_date, record.capture_time].filter(Boolean).join(" ");
+        const fields = [
+          ["姓名", record.person_name],
+          ["身份证号", record.masked_id],
+          ["截图时间", capture],
+          ["相关企业", record.related_count],
+          ["任职", record.employment_count],
+          ["参股", record.shareholding_count],
+          ["复核状态", record.review_status],
+        ];
+        return `
+          <div class="compare-block">
+            <h4>${esc(title)}</h4>
+            <table>
+              <thead><tr><th>字段</th><th>值</th></tr></thead>
+              <tbody>${fields.map(([name, value]) => `<tr><td>${esc(name)}</td><td><strong>${esc(value || "—")}</strong></td></tr>`).join("")}</tbody>
+            </table>
+          </div>
+        `;
+      }
       const b = row.baseline || {};
       const c = row.current || {};
       const bCapture = [b.capture_date, b.capture_time].filter(Boolean).join(" ");
@@ -1534,6 +1545,31 @@
     }
 
     function renderEmploymentCompare(row) {
+      if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") {
+        const rows = row.match_status === "unmatched_new" ? (row.current_employment || []) : (row.baseline_employment || []);
+        const title = row.match_status === "unmatched_new" ? "新增记录任职明细" : "减少记录任职明细";
+        return `
+          <div class="compare-block">
+            <h4>${esc(title)}</h4>
+            ${rows.length ? `
+              <table>
+                <thead><tr><th>企业名称</th><th>经营状态</th><th>承担职务</th><th>持股比例</th><th>来源图片</th></tr></thead>
+                <tbody>
+                  ${rows.map((item) => `
+                    <tr>
+                      <td><strong>${esc(item.company_name || "未识别企业")}</strong></td>
+                      <td>${esc(item.business_status || "—")}</td>
+                      <td>${esc(item.role || "—")}</td>
+                      <td>${esc(item.share_ratio || "—")}</td>
+                      <td class="mono">${esc(item.source_image || "—")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            ` : `<div class="empty" style="padding:24px;">无任职企业明细。</div>`}
+          </div>
+        `;
+      }
       const pairs = alignEmploymentRows(row);
       return `
         <div class="compare-block">
@@ -1607,7 +1643,6 @@
           <div class="metric accent"><div class="k">业务一致</div><div class="v">${Number(s.same_records || 0)}</div><div class="hint">不含新增和缺失</div></div>
           <div class="metric warn"><div class="k">业务变化</div><div class="v">${Number(s.business_changed_records || 0)}</div><div class="hint">基础或任职字段变化</div></div>
           <div class="metric warn"><div class="k">任职变化</div><div class="v">${Number(s.employment_changed_records || 0)}</div><div class="hint">企业明细逐字段差异</div></div>
-          <div class="metric warn"><div class="k">图片变化</div><div class="v">${Number(s.image_changed_records || 0)}</div><div class="hint">批次图片增加或减少</div></div>
           <div class="metric bad"><div class="k">新增 / 缺失</div><div class="v">${Number(s.new_records || 0)} / ${Number(s.missing_records || 0)}</div><div class="hint">记录级变化</div></div>
           <div class="metric bad"><div class="k">需复核</div><div class="v">${Number(s.requires_review || 0)}</div><div class="hint">中高风险或业务变化</div></div>
         </div>
@@ -1642,8 +1677,8 @@
                     <div class="diff-chips">${renderBasicDiffChips(row)}</div>
                   </div>
                   <div class="diff-card-section">
-                    <span class="section-label">任职明细 / 图片</span>
-                    <div class="diff-chips">${renderEmploymentSummaryChips(row)}${renderImageDiffChips(row)}</div>
+                    <span class="section-label">任职明细</span>
+                    <div class="diff-chips">${renderEmploymentSummaryChips(row)}</div>
                   </div>
                 </button>
               `).join("") : `<div class="empty">当前筛选条件下没有差异记录。</div>`}
