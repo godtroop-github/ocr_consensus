@@ -176,6 +176,7 @@
 
   <script>
     const COMPARE_STATE_KEY = "ocr_baseline_compare_state_v2";
+    const COMPARE_DECISIONS_KEY = "ocr_baseline_compare_decisions_v1";
     const params = new URLSearchParams(location.search);
     const baselineId = params.get("baseline_id") || "";
     const taskId = params.get("task_id") || "";
@@ -202,6 +203,28 @@
 
     function readCompareState() {
       try { return JSON.parse(sessionStorage.getItem(COMPARE_STATE_KEY) || "null"); } catch (err) { return null; }
+    }
+    function decisionScope() {
+      return `${baselineId}::${taskId}`;
+    }
+    function readCompareDecisions() {
+      try {
+        const all = JSON.parse(sessionStorage.getItem(COMPARE_DECISIONS_KEY) || "{}");
+        return all[decisionScope()] || {};
+      } catch (err) {
+        return {};
+      }
+    }
+    function writeCompareDecision(decision) {
+      try {
+        const all = JSON.parse(sessionStorage.getItem(COMPARE_DECISIONS_KEY) || "{}");
+        const scoped = all[decisionScope()] || {};
+        scoped[String(idx)] = decision;
+        all[decisionScope()] = scoped;
+        sessionStorage.setItem(COMPARE_DECISIONS_KEY, JSON.stringify(all));
+      } catch (err) {
+        throw new Error("浏览器无法保存本轮裁决状态");
+      }
     }
     function stateMatches(state) {
       return !!(
@@ -443,12 +466,14 @@
     function decisionSection() {
       const seed = esc(JSON.stringify(manualFieldsSeed(), null, 2));
       const currentDisabled = row.match_status === "unmatched_missing" ? "" : "";
+      const existing = readCompareDecisions()[String(idx)];
+      const existingText = existing ? `当前已选择：${existing.action === "accept_current" ? "采用本次" : existing.action === "manual" ? "手工修正" : "保留基线"}` : "当前尚未裁决。";
       return `
         <section class="panel">
           <h2>基线裁决</h2>
           <div class="decision-panel">
             <div class="decision-status">
-              生成新的真实基线版本，旧基线保留；未裁决的记录默认保留旧基线，不会被本次任务自动覆盖。
+              ${esc(existingText)} 裁决只记录在本轮比对中；回到列表页统一提交后才会生成新的真实基线版本。
               ${row.match_status === "unmatched_missing" ? "该记录在本次任务中缺失，采用本次表示从新基线中移除该记录。" : ""}
             </div>
             <div class="decision-actions">
@@ -457,7 +482,7 @@
               <button class="btn" type="button" data-baseline-decision="manual">手工修正</button>
             </div>
             <textarea id="manualFields" class="decision-textarea" spellcheck="false">${seed}</textarea>
-            <div id="decisionStatus" class="decision-status">手工修正仅处理基础信息字段；任职明细按整条记录采用基线或本次。</div>
+            <div id="decisionStatus" class="decision-status">手工修正仅处理基础信息字段；任职明细按整条记录采用基线或本次。保存后会返回比对列表。</div>
           </div>
         </section>
       `;
@@ -474,29 +499,12 @@
           return;
         }
       }
-      const reason = window.prompt(`确认${label}并生成新的 active golden 基线？可输入备注：`, label);
+      const reason = window.prompt(`确认记录裁决：${label}。可输入备注：`, label);
       if (reason === null) return;
-      status.textContent = "正在生成新基线版本...";
       try {
-        const res = await fetch(`/api/baselines/${encodeURIComponent(baselineId)}/apply-compare`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            task_id: taskId,
-            type: "golden",
-            name: `${compareData.baseline.name || compareData.baseline.id} / updated`,
-            notes: reason,
-            decisions: [{ idx, action, fields, reason }],
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || "生成新基线失败");
-        sessionStorage.removeItem(COMPARE_STATE_KEY);
-        status.textContent = `已生成新基线：${data.baseline && data.baseline.name ? data.baseline.name : data.baseline.id}`;
-        const nextId = data.baseline && data.baseline.id;
-        if (nextId) {
-          location.href = `/baselines?id=${encodeURIComponent(nextId)}`;
-        }
+        writeCompareDecision({ idx, action, fields, reason, decided_at: new Date().toISOString() });
+        status.textContent = `已记录裁决：${label}，正在返回列表。`;
+        location.href = backHref();
       } catch (err) {
         status.textContent = err.message || String(err);
       }
