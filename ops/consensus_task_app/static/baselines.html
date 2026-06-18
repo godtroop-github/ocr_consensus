@@ -1372,19 +1372,13 @@
     function renderDecisionBar(data, rows) {
       const decisions = readCompareDecisions(data);
       const decisionRows = rows.filter((row) => rowDecisionRequiredCount(row) > 0);
-      const doneRows = decisionRows.filter((row) => {
-        const required = rowDecisionRequiredCount(row);
-        return rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
-      });
+      const doneRows = decisionRows.filter((row) => rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= rowDecisionRequiredCount(row));
       const pendingRows = Math.max(0, decisionRows.length - doneRows.length);
-      const requiredItems = decisionRows.reduce((sum, row) => sum + rowDecisionRequiredCount(row), 0);
-      const decidedItems = decisionRows.reduce((sum, row) => sum + rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]), 0);
       const statusHtml = decisionRows.length === 0
         ? `<span class="decision-chip done">无需裁决</span>`
         : pendingRows > 0
-          ? `<span class="decision-chip need">待裁决 ${pendingRows} 条</span><span class="decision-chip">已裁决 ${doneRows.length}/${decisionRows.length} 条</span>`
-          : `<span class="decision-chip done">已完成 ${doneRows.length}/${decisionRows.length} 条</span>`;
-      const itemHint = decisionRows.length > 0 ? `<span class="decision-chip">字段项 ${decidedItems}/${requiredItems}</span>` : "";
+          ? `<span class="decision-chip need">待裁决 ${pendingRows} 条</span><span class="decision-chip">已裁决 ${doneRows.length}/${decisionRows.length}</span>`
+          : `<span class="decision-chip done">已完成 ${doneRows.length}/${decisionRows.length}</span>`;
       const buttonText = decisionRows.length === 0 ? "无需更新" : "提交基线更新";
       const buttonTitle = decisionRows.length === 0
         ? "本次比对没有需要裁决的业务差异，不生成新的真实基线版本。"
@@ -1401,21 +1395,743 @@
           </div>
           <div class="stats">
             ${statusHtml}
-            ${itemHint}
             <button class="btn" id="submitBaselineUpdate" type="button" title="${esc(buttonTitle)}">${esc(buttonText)}</button>
           </div>
         </div>
       `;
     }
 
+    function compareFilterItems(s, scopeRows = null) {
+      const rows = Array.isArray(scopeRows) ? scopeRows : prepareCompareRows((lastCompareData && lastCompareData.records) || []);
+      const decisions = readCompareDecisions(lastCompareData);
+      const pendingDecisionCount = rows.filter((row) => rowDecisionRequiredCount(row) > rowDecisionResolvedCount(row, decisions[String(row._compare_idx)])).length;
+      const doneDecisionCount = rows.filter((row) => {
+        const required = rowDecisionRequiredCount(row);
+        return required > 0 && rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
+      }).length;
+      return [
+        ["all", "全部", rows.length],
+        ["review", "需复核", rows.filter((r) => r.requires_review).length],
+        ["decision_pending", "待裁决", pendingDecisionCount],
+        ["decision_done", "已裁决", doneDecisionCount],
+        ["business", "业务变化", rows.filter((r) => r.business_diff_status === "changed").length],
+        ["employment", "任职变化", rows.filter((r) => (r.employment_diffs || []).length).length],
+        ["new", "新增", rows.filter((r) => r.business_diff_status === "new").length],
+        ["missing", "缺失", rows.filter((r) => r.business_diff_status === "missing").length],
+        ["older", "疑似旧截图", rows.filter((r) => r.capture_time_diff_status === "older").length],
+        ["time", "仅时间变化", rows.filter((r) => r.business_diff_status === "same" && r.capture_time_diff_status !== "same").length],
+      ];
+    }
+
+    function compareFilterLabel(s) {
+      const item = compareFilterItems(s).find(([key]) => key === compareFilter);
+      return item ? `${item[1]} ${Number(item[2] || 0)}` : "重点差异";
+    }
+
+    function renderCompareViz(s) {
+      const total = Number(s.total_records || 0);
+      const same = Number(s.same_records || 0);
+      const changed = Number(s.business_changed_records || 0);
+      const added = Number(s.new_records || 0);
+      const missing = Number(s.missing_records || 0);
+      const timeOnly = Number(s.capture_time_only_changed || 0);
+      const severity = s.severity || {};
+      return `
+        <div class="compare-viz">
+          <div class="viz-card">
+            <div class="viz-title">变化构成</div>
+            <div class="stack-bar" title="业务一致 / 业务变化 / 新增 / 缺失 / 仅时间变化">
+              <div class="stack-seg same" style="width:${pct(same, total)}%"></div>
+              <div class="stack-seg changed" style="width:${pct(changed, total)}%"></div>
+              <div class="stack-seg new" style="width:${pct(added, total)}%"></div>
+              <div class="stack-seg missing" style="width:${pct(missing, total)}%"></div>
+              <div class="stack-seg time" style="width:${pct(timeOnly, total)}%"></div>
+            </div>
+            <div class="legend">
+              <span><i class="dot same"></i>业务一致 ${same}</span>
+              <span><i class="dot changed"></i>业务变化 ${changed}</span>
+              <span><i class="dot new"></i>新增 ${added}</span>
+              <span><i class="dot missing"></i>缺失 ${missing}</span>
+              <span><i class="dot time"></i>仅时间变化 ${timeOnly}</span>
+            </div>
+          </div>
+          <div class="viz-card">
+            <div class="viz-title">风险分布</div>
+            <div class="risk-grid">
+              ${["info", "low", "medium", "high", "critical"].map((key) => `
+                <div class="risk-pill">
+                  <strong>${Number(severity[key] || 0)}</strong>
+                  <span>${esc(severityLabel(key))}</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function recordCountsText(record) {
+      if (!record) return "—";
+      return `${record.related_count || "0"} / ${record.employment_count || "0"} / ${record.shareholding_count || "0"}`;
+    }
+
+    function renderRecordCard(title, record) {
+      if (!record) {
+        return `
+          <div class="record-card">
+            <h4>${esc(title)}</h4>
+            <div class="empty" style="padding:24px;">无记录</div>
+          </div>
+        `;
+      }
+      const capture = [record.capture_date, record.capture_time].filter(Boolean).join(" ") || "—";
+      const rows = [
+        ["记录键", record.record_key || "—"],
+        ["文件编号", record.file_id || "—"],
+        ["文件名", record.file_name || "—"],
+        ["姓名", record.person_name || "—"],
+        ["身份证号", record.masked_id || "—"],
+        ["截图时间", capture],
+        ["企/任/参", recordCountsText(record)],
+        ["复核状态", record.review_status || "—"],
+      ];
+      return `
+        <div class="record-card">
+          <h4>${esc(title)}</h4>
+          <div class="record-fields">
+            ${rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>`).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRecordDetail(row) {
+      return `
+        <details class="record-detail" ${row.requires_review ? "open" : ""}>
+          <summary>基线记录 / 本次记录详情</summary>
+          <div class="record-pair">
+            ${renderRecordCard("基线记录", row.baseline)}
+            ${renderRecordCard("本次记录", row.current)}
+          </div>
+          ${renderEmploymentDiffs(row)}
+        </details>
+      `;
+    }
+
+    function rowSearchText(row) {
+      const parts = [
+        row.record_key,
+        recordId(row),
+        recordName(row),
+        recordMaskedId(row),
+        recordCapture(row),
+      ];
+      for (const rec of [row.baseline, row.current]) {
+        if (!rec) continue;
+        parts.push(rec.file_name, rec.person_name, rec.masked_id, rec.related_count, rec.employment_count, rec.shareholding_count);
+      }
+      for (const diff of row.field_diffs || []) {
+        parts.push(diff.field_name, diff.baseline_value, diff.current_value, diff.diff_type);
+      }
+      for (const diff of row.employment_diffs || []) {
+        const b = diff.baseline_row || {};
+        const c = diff.current_row || {};
+        parts.push(
+          diff.field_name,
+          diff.baseline_value,
+          diff.current_value,
+          diff.diff_type,
+          b.company_name,
+          c.company_name,
+          b.business_status,
+          c.business_status,
+          b.role,
+          c.role,
+          b.share_ratio,
+          c.share_ratio
+        );
+      }
+      parts.push(...(row.baseline_images || []), ...(row.current_images || []));
+      return parts.map((x) => String(x || "").toLowerCase()).join(" ");
+    }
+
+    function applyCompareDetailFilters(rows) {
+      const q = (compareDetailFilters.q || "").trim().toLowerCase();
+      return rows.filter((row) => {
+        if (compareDetailFilters.business && row.business_diff_status !== compareDetailFilters.business) return false;
+        if (compareDetailFilters.capture && row.capture_time_diff_status !== compareDetailFilters.capture) return false;
+        if (compareDetailFilters.severity && row.severity !== compareDetailFilters.severity) return false;
+        if (compareDetailFilters.reviewOnly && !row.requires_review) return false;
+        if (compareDetailFilters.decision) {
+          const decisions = lastCompareData ? readCompareDecisions(lastCompareData) : {};
+          const needs = rowNeedsDecision(row);
+          const done = !!decisions[String(row._compare_idx)];
+          if (compareDetailFilters.decision === "pending" && (!needs || done)) return false;
+          if (compareDetailFilters.decision === "done" && (!needs || !done)) return false;
+          if (compareDetailFilters.decision === "none" && needs) return false;
+        }
+        if (q && !rowSearchText(row).includes(q)) return false;
+        return true;
+      });
+    }
+
+    function hasCompareDetailFilters() {
+      return !!(
+        (compareDetailFilters.q || "").trim()
+        || compareDetailFilters.business
+        || compareDetailFilters.capture
+        || compareDetailFilters.severity
+        || compareDetailFilters.decision
+        || compareDetailFilters.reviewOnly
+      );
+    }
+
+
+    const COMPARE_COLUMN_DEFS = [
+      { key: "status", label: "状态" },
+      { key: "severity", label: "风险" },
+      { key: "record_id", label: "编号" },
+      { key: "name", label: "姓名" },
+      { key: "masked_id", label: "身份证号" },
+      { key: "capture", label: "截图时间" },
+      { key: "basic", label: "基础差异" },
+      { key: "employment", label: "任职差异" },
+      { key: "decision", label: "裁决" },
+    ];
+
+    function compareColumnDefByKey(key) {
+      return COMPARE_COLUMN_DEFS.find((d) => d.key === key);
+    }
+
+    function compareColumnText(row, key, decisions = {}) {
+      if (key === "status") return recordStatusLabel(row);
+      if (key === "severity") return severityLabel(row.severity);
+      if (key === "record_id") return recordId(row);
+      if (key === "name") return recordName(row);
+      if (key === "masked_id") return recordMaskedId(row);
+      if (key === "capture") return recordCapture(row);
+      if (key === "basic") return (row.business_diffs || []).length ? renderBasicDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "基础信息无变化";
+      if (key === "employment") return (row.employment_diffs || []).length ? renderEmploymentSummaryChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "任职明细无变化";
+      if (key === "decision") {
+        if (!rowNeedsDecision(row)) return "无需裁决";
+        return decisionLabel(decisions[String(row._compare_idx)]) || "待裁决";
+      }
+      return "—";
+    }
+
+    function compareColumnFilterSummary() {
+      const chips = [];
+      for (const def of COMPARE_COLUMN_DEFS) {
+        const picked = compareColumnFilters[def.key];
+        if (picked && picked.size) chips.push(`<span class="chip">${esc(def.label)}: ${picked.size}</span>`);
+      }
+      if (compareColumnSort.key) {
+        const def = compareColumnDefByKey(compareColumnSort.key);
+        chips.push(`<span class="chip">排序: ${esc(def ? def.label : compareColumnSort.key)} ${compareColumnSort.direction === "desc" ? "降序" : "升序"}</span>`);
+      }
+      return `<div id="compareFilterSummary" class="compare-filter-summary">${chips.length ? chips.join("") : '<span class="chip">未设置列筛选</span>'}</div>`;
+    }
+
+    function applyCompareColumnFilters(rows, decisions) {
+      return rows.filter((row) => {
+        for (const def of COMPARE_COLUMN_DEFS) {
+          const picked = compareColumnFilters[def.key];
+          if (!picked || !picked.size) continue;
+          if (!picked.has(compareColumnText(row, def.key, decisions) || "—")) return false;
+        }
+        return true;
+      });
+    }
+
+    function sortCompareRows(rows, decisions) {
+      if (!compareColumnSort.key) return rows;
+      const dir = compareColumnSort.direction === "desc" ? -1 : 1;
+      return [...rows].sort((a, b) => {
+        const av = compareColumnText(a, compareColumnSort.key, decisions);
+        const bv = compareColumnText(b, compareColumnSort.key, decisions);
+        const an = Number(av);
+        const bn = Number(bv);
+        if (Number.isFinite(an) && Number.isFinite(bn)) return (an - bn) * dir;
+        return String(av || "").localeCompare(String(bv || ""), "zh-CN") * dir;
+      });
+    }
+
+    function compareColumnCounts(rows, def, decisions) {
+      const map = new Map();
+      for (const row of rows) {
+        const value = compareColumnText(row, def.key, decisions) || "—";
+        map.set(value, (map.get(value) || 0) + 1);
+      }
+      return Array.from(map.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN"));
+    }
+
+    function renderCompareHeaderCell(key) {
+      const def = compareColumnDefByKey(key);
+      const picked = compareColumnFilters[key];
+      const count = picked && picked.size ? picked.size : "";
+      const mark = compareColumnSort.key === key ? compareColumnSort.direction : "";
+      return `<th class="sort-filter-th" data-column-key="${esc(key)}"><div class="th-wrap"><button class="th-sort" type="button"><span>${esc(def ? def.label : key)}</span><span class="sort-mark ${esc(mark)}"></span></button><button class="th-filter ${count ? "active" : ""}" type="button" data-count="${esc(count)}" aria-label="筛选${esc(def ? def.label : key)}"></button></div></th>`;
+    }
+
+    function ensureCompareColumnPopover() {
+      let pop = document.getElementById("compareColumnFilterPopover");
+      if (!pop) {
+        pop = document.createElement("div");
+        pop.id = "compareColumnFilterPopover";
+        pop.className = "col-popover";
+        document.body.appendChild(pop);
+      }
+      return pop;
+    }
+
+    function closeCompareColumnPopover() {
+      compareOpenFilterKey = "";
+      const pop = ensureCompareColumnPopover();
+      pop.classList.remove("open");
+      pop.innerHTML = "";
+    }
+
+    function renderCompareColumnPopover(def, anchor, decisions) {
+      const pop = ensureCompareColumnPopover();
+      const opts = compareColumnCounts(compareHeaderBaseRows, def, decisions);
+      const picked = compareColumnFilters[def.key] || new Set();
+      compareOpenFilterKey = def.key;
+      const optionHtml = (items) => items.map(([value, count]) => `
+        <div class="pop-option">
+          <label title="${esc(value)}"><input type="checkbox" class="pop-check" data-value="${esc(value)}" ${picked.has(value) ? "checked" : ""} /><span class="pop-value">${esc(value)}</span></label>
+          <span class="pop-count">${count}</span>
+        </div>
+      `).join("");
+      pop.innerHTML = `
+        <div class="pop-head">
+          <div class="pop-title">${esc(def.label)}筛选（${picked.size || 0}/${opts.length || 0}）</div>
+          <input class="pop-search" type="search" placeholder="输入筛选项..." />
+          <div class="pop-actions"><button class="pop-btn" type="button" data-action="all">全选</button><button class="pop-btn" type="button" data-action="clear">清空</button><button class="pop-btn" type="button" data-action="close">关闭</button></div>
+        </div>
+        <div class="pop-options">${optionHtml(opts)}</div>
+      `;
+      const rect = anchor.getBoundingClientRect();
+      const width = 290;
+      pop.style.left = `${Math.min(Math.max(10, rect.right - width), window.innerWidth - width - 10)}px`;
+      pop.style.top = `${Math.max(10, Math.min(rect.bottom + 6, window.innerHeight - 430))}px`;
+      pop.classList.add("open");
+      const bindChecks = () => pop.querySelectorAll(".pop-check").forEach((input) => {
+        input.addEventListener("change", () => {
+          const set = compareColumnFilters[def.key] || new Set();
+          if (input.checked) set.add(input.dataset.value || "—");
+          else set.delete(input.dataset.value || "—");
+          compareColumnFilters[def.key] = set;
+          renderCompareResult(lastCompareData);
+        });
+      });
+      pop.querySelector(".pop-search").addEventListener("input", (ev) => {
+        const keyword = String(ev.target.value || "").toLowerCase();
+        const filtered = keyword ? opts.filter(([value]) => String(value).toLowerCase().includes(keyword)) : opts;
+        pop.querySelector(".pop-options").innerHTML = optionHtml(filtered);
+        bindChecks();
+      });
+      pop.querySelectorAll(".pop-btn").forEach((btn) => btn.addEventListener("click", () => {
+        const action = btn.dataset.action;
+        if (action === "all") compareColumnFilters[def.key] = new Set(opts.map(([v]) => v));
+        if (action === "clear") compareColumnFilters[def.key] = new Set();
+        if (action === "close") { closeCompareColumnPopover(); return; }
+        renderCompareResult(lastCompareData);
+      }));
+      bindChecks();
+    }
+
+    function bindCompareHeaderInteractions(decisions) {
+      compareResult.querySelectorAll("th.sort-filter-th").forEach((th) => {
+        const key = th.dataset.columnKey;
+        const def = compareColumnDefByKey(key);
+        th.querySelector(".th-sort")?.addEventListener("click", () => {
+          if (compareColumnSort.key === key) compareColumnSort.direction = compareColumnSort.direction === "asc" ? "desc" : "asc";
+          else compareColumnSort = { key, direction: "asc" };
+          renderCompareResult(lastCompareData);
+        });
+        th.querySelector(".th-filter")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (!def) return;
+          if (compareOpenFilterKey === key && ensureCompareColumnPopover().classList.contains("open")) closeCompareColumnPopover();
+          else renderCompareColumnPopover(def, ev.currentTarget, decisions);
+        });
+      });
+      if (!window.__compareColumnPopoverBound) {
+        document.addEventListener("click", (ev) => {
+          const pop = ensureCompareColumnPopover();
+          if (!pop.classList.contains("open")) return;
+          if (pop.contains(ev.target) || ev.target.closest(".th-filter")) return;
+          closeCompareColumnPopover();
+        });
+        window.__compareColumnPopoverBound = true;
+      }
+    }
+
+    let compareSelectedUid = "";
+    let compareImageIndex = { baseline: 0, current: 0 };
+
+    function compareRowUid(row, idx) {
+      return row._compare_uid || `${row.record_key || ""}::${recordId(row)}::${recordName(row)}::${idx}`;
+    }
+
+    function prepareCompareRows(rows) {
+      rows.forEach((row, idx) => {
+        row._compare_idx = idx;
+        if (!row._compare_uid) row._compare_uid = compareRowUid(row, idx);
+      });
+      return rows;
+    }
+
+    function chipClassBySeverity(severity) {
+      if (["high", "critical"].includes(severity)) return "bad";
+      if (["medium"].includes(severity)) return "changed";
+      return "same";
+    }
+
+    function renderBasicDiffChips(row) {
+      if (row.business_diff_status === "new") return `<span class="diff-chip changed">新增记录</span>`;
+      if (row.business_diff_status === "missing") return `<span class="diff-chip changed">基线缺失</span>`;
+      const diffs = visibleBusinessDiffs(row);
+      if (!diffs.length) return `<span class="diff-chip same">基础信息无变化</span>`;
+      return diffs.slice(0, 6).map((d) => `
+        <span class="diff-chip ${esc(chipClassBySeverity(d.severity || "medium"))}" title="${esc(d.baseline_value || "—")} -> ${esc(d.current_value || "—")}">
+          ${esc(d.field_name || "字段")} ${esc(d.baseline_value || "—")} → ${esc(d.current_value || "—")}
+        </span>
+      `).join("") + (diffs.length > 6 ? `<span class="diff-chip changed">另 ${diffs.length - 6} 项</span>` : "");
+    }
+
+    function renderEmploymentSummaryChips(row) {
+      const diffs = row.employment_diffs || [];
+      if (!diffs.length) return `<span class="diff-chip same">任职明细无变化</span>`;
+      const grouped = diffs.reduce((acc, d) => {
+        const key = d.diff_type || "employment_changed";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      const labels = {
+        company_added: "新增企业字段",
+        company_missing: "缺失企业字段",
+        company_name_changed: "企业名称",
+        company_status_changed: "经营状态",
+        company_role_changed: "职务",
+        company_share_changed: "持股比例",
+        employment_changed: "任职变化",
+      };
+      return Object.entries(grouped).slice(0, 5).map(([key, count]) => `
+        <span class="diff-chip bad">${esc(labels[key] || key)} ${Number(count || 0)}</span>
+      `).join("") + (Object.keys(grouped).length > 5 ? `<span class="diff-chip changed">另 ${Object.keys(grouped).length - 5} 类</span>` : "");
+    }
+
+    function renderImageDiffChips(row) {
+      return "";
+    }
+
+    function recordStatusLabel(row) {
+      if (row.match_status === "unmatched_new") return "新增";
+      if (row.match_status === "unmatched_missing") return "缺失";
+      if (row.requires_review) return "待复核";
+      return "正常";
+    }
+
+    function recordStatusClass(row) {
+      if (row.requires_review || ["unmatched_new", "unmatched_missing"].includes(row.match_status)) return "bad";
+      if (row.capture_time_diff_status && row.capture_time_diff_status !== "same") return "changed";
+      return "same";
+    }
+
+    function imageUrlFromFile(taskId, file) {
+      if (!taskId || !file) return "";
+      return `/runs/${encodeURIComponent(taskId)}/dashboard/images/${encodeURIComponent(file)}`;
+    }
+
+    function imageList(row, side) {
+      const key = side === "baseline" ? "baseline_images" : "current_images";
+      const record = side === "baseline" ? row.baseline : row.current;
+      const list = (row[key] || []).filter(Boolean);
+      if (!list.length && record && record.file_name) list.push(record.file_name);
+      return [...new Set(list)];
+    }
+
+    function renderImageBatch(label, taskId, row, side) {
+      const images = imageList(row, side);
+      const total = images.length;
+      const idx = Math.max(0, Math.min(Number(compareImageIndex[side] || 0), Math.max(0, total - 1)));
+      const file = total ? images[idx] : "";
+      const src = imageUrlFromFile(taskId, file);
+      return `
+        <div class="image-card">
+          <h4>${esc(label)}${file ? ` · ${esc(file)}` : ""}</h4>
+          <div class="image-frame">
+            ${src ? `<img src="${esc(src)}" alt="${esc(label)}" title="点击放大/恢复" />` : `<div class="empty" style="padding:18px;">图片不可用</div>`}
+          </div>
+          <div class="batch-controls">
+            <button class="icon-btn" type="button" data-image-nav="${esc(side)}" data-delta="-1" ${total <= 1 ? "disabled" : ""}>‹</button>
+            <span class="mono">${total ? `${idx + 1} / ${total}` : "0 / 0"}</span>
+            <button class="icon-btn" type="button" data-image-nav="${esc(side)}" data-delta="1" ${total <= 1 ? "disabled" : ""}>›</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function compareValueCell(baselineValue, currentValue) {
+      const b = baselineValue === undefined || baselineValue === null || baselineValue === "" ? "—" : baselineValue;
+      const c = currentValue === undefined || currentValue === null || currentValue === "" ? "—" : currentValue;
+      const same = String(b) === String(c);
+      return `
+        <div class="compare-cell ${same ? "same" : "changed"}">
+          <div class="b">${esc(b)}</div>
+          <div class="arr">→</div>
+          <div class="c">${esc(c)}</div>
+        </div>
+      `;
+    }
+
+    function renderBasicCompare(row) {
+      if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") {
+        const record = row.current || row.baseline || {};
+        const title = row.match_status === "unmatched_new" ? "新增记录共识结果" : "减少记录基线结果";
+        const capture = [record.capture_date, record.capture_time].filter(Boolean).join(" ");
+        const fields = [
+          ["姓名", record.person_name],
+          ["身份证号", record.masked_id],
+          ["截图时间", capture],
+          ["相关企业", record.related_count],
+          ["任职", record.employment_count],
+          ["参股", record.shareholding_count],
+          ["复核状态", record.review_status],
+        ];
+        return `
+          <div class="compare-block">
+            <h4>${esc(title)}</h4>
+            <table>
+              <thead><tr><th>字段</th><th>值</th></tr></thead>
+              <tbody>${fields.map(([name, value]) => `<tr><td>${esc(name)}</td><td><strong>${esc(value || "—")}</strong></td></tr>`).join("")}</tbody>
+            </table>
+          </div>
+        `;
+      }
+      const b = row.baseline || {};
+      const c = row.current || {};
+      const bCapture = [b.capture_date, b.capture_time].filter(Boolean).join(" ");
+      const cCapture = [c.capture_date, c.capture_time].filter(Boolean).join(" ");
+      const fields = [
+        ["姓名", b.person_name, c.person_name],
+        ["身份证号", b.masked_id, c.masked_id],
+        ["截图时间", bCapture, cCapture],
+        ["相关企业", b.related_count, c.related_count],
+        ["任职", b.employment_count, c.employment_count],
+        ["参股", b.shareholding_count, c.shareholding_count],
+        ["复核状态", b.review_status, c.review_status],
+      ];
+      return `
+        <div class="compare-block">
+          <h4>基础信息共识结果</h4>
+          <table>
+            <thead><tr><th>字段</th><th>基线 → 本次</th><th>状态</th></tr></thead>
+            <tbody>
+              ${fields.map(([name, bv, cv]) => {
+                const same = String(bv || "") === String(cv || "");
+                return `<tr><td>${esc(name)}</td><td>${compareValueCell(bv, cv)}</td><td><span class="diff-status ${same ? "same" : "changed"}">${same ? "一致" : "变化"}</span></td></tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function employmentCompareKey(row, idx) {
+      const key = row.company_key || "";
+      const name = row.company_name || "";
+      if (key && !key.includes("未识别企业") && !name.includes("未识别企业")) return `k:${key}`;
+      return `p:${row.row_index || idx}`;
+    }
+
+    function companyKeysCompatible(left, right) {
+      const a = String(left || "").replace(/\s+/g, "");
+      const b = String(right || "").replace(/\s+/g, "");
+      if (!a || !b || a.includes("未识别企业") || b.includes("未识别企业")) return false;
+      if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) >= 6;
+      const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+      let best = 0;
+      for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+          if (a[i - 1] === b[j - 1]) {
+            matrix[i][j] = matrix[i - 1][j - 1] + 1;
+            best = Math.max(best, matrix[i][j]);
+          }
+        }
+      }
+      return best / Math.max(a.length, b.length) >= 0.86;
+    }
+
+    function alignEmploymentRows(row) {
+      const baselineRows = row.baseline_employment || [];
+      const currentRows = row.current_employment || [];
+      const used = new Set();
+      const pairs = baselineRows.map((baseline, baselineIdx) => {
+        let matchedIdx = currentRows.findIndex((current, idx) => {
+          if (used.has(idx)) return false;
+          return employmentCompareKey(baseline, baselineIdx) === employmentCompareKey(current, idx);
+        });
+        if (matchedIdx < 0) {
+          matchedIdx = currentRows.findIndex((current, idx) => {
+            if (used.has(idx)) return false;
+            return companyKeysCompatible(baseline.company_key, current.company_key);
+          });
+        }
+        if (matchedIdx >= 0) {
+          used.add(matchedIdx);
+          return { baseline, current: currentRows[matchedIdx] };
+        }
+        return { baseline, current: null };
+      });
+      currentRows.forEach((current, idx) => {
+        if (!used.has(idx)) pairs.push({ baseline: null, current });
+      });
+      return pairs;
+    }
+
+    function rowCompareStatus(pair) {
+      if (!pair.baseline) return ["新增", "bad"];
+      if (!pair.current) return ["缺失", "bad"];
+      const fields = ["company_name", "business_status", "role", "share_ratio"];
+      return fields.some((key) => String(pair.baseline[key] || "") !== String(pair.current[key] || "")) ? ["变化", "changed"] : ["一致", "same"];
+    }
+
+    function companyTitle(row) {
+      if (!row) return "—";
+      return row.company_name || "未识别企业";
+    }
+
+    function companySub(row) {
+      if (!row) return "";
+      const parts = [row.business_status, row.role, row.share_ratio].filter(Boolean);
+      return parts.join(" · ");
+    }
+
+    function renderCompanyFieldCompare(pair) {
+      const b = pair.baseline || {};
+      const c = pair.current || {};
+      const fields = [
+        ["企业名称", b.company_name, c.company_name],
+        ["经营状态", b.business_status, c.business_status],
+        ["承担职务", b.role, c.role],
+        ["持股比例", b.share_ratio, c.share_ratio],
+        ["来源图片", b.source_image, c.source_image],
+      ];
+      return `
+        <div class="company-fields">
+          <table>
+            <thead><tr><th>字段</th><th>基线 → 本次</th><th>状态</th></tr></thead>
+            <tbody>
+              ${fields.map(([name, bv, cv]) => {
+                const same = String(bv || "") === String(cv || "");
+                return `<tr><td>${esc(name)}</td><td>${compareValueCell(bv, cv)}</td><td><span class="diff-status ${same ? "same" : "changed"}">${same ? "一致" : "变化"}</span></td></tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderEmploymentCompare(row) {
+      if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") {
+        const rows = row.match_status === "unmatched_new" ? (row.current_employment || []) : (row.baseline_employment || []);
+        const title = row.match_status === "unmatched_new" ? "新增记录任职明细" : "减少记录任职明细";
+        return `
+          <div class="compare-block">
+            <h4>${esc(title)}</h4>
+            ${rows.length ? `
+              <table>
+                <thead><tr><th>企业名称</th><th>经营状态</th><th>承担职务</th><th>持股比例</th><th>来源图片</th></tr></thead>
+                <tbody>
+                  ${rows.map((item) => `
+                    <tr>
+                      <td><strong>${esc(item.company_name || "未识别企业")}</strong></td>
+                      <td>${esc(item.business_status || "—")}</td>
+                      <td>${esc(item.role || "—")}</td>
+                      <td>${esc(item.share_ratio || "—")}</td>
+                      <td class="mono">${esc(item.source_image || "—")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            ` : `<div class="empty" style="padding:24px;">无任职企业明细。</div>`}
+          </div>
+        `;
+      }
+      const pairs = alignEmploymentRows(row);
+      return `
+        <div class="compare-block">
+          <h4>任职明细共识结果</h4>
+          ${pairs.length ? `
+            <div class="company-compare-list">
+              ${pairs.map((pair) => {
+                const [label, cls] = rowCompareStatus(pair);
+                const open = cls !== "same" ? "open" : "";
+                return `
+                  <details class="company-card" ${open}>
+                    <summary class="company-summary">
+                      <div class="company-pair">
+                        <div class="company-name">${esc(companyTitle(pair.baseline))}<small>${esc(companySub(pair.baseline))}</small></div>
+                        <div class="arrow">→</div>
+                        <div class="company-name">${esc(companyTitle(pair.current))}<small>${esc(companySub(pair.current))}</small></div>
+                      </div>
+                      <span class="diff-status ${cls}">${label}</span>
+                    </summary>
+                    ${renderCompanyFieldCompare(pair)}
+                  </details>
+                `;
+              }).join("")}
+            </div>
+          ` : `<div class="empty" style="padding:24px;">无任职企业明细。</div>`}
+        </div>
+      `;
+    }
+
+    function renderSelectedCompareRecord(row, data) {
+      if (!row) return `<div class="record-review-pane"><div class="empty">请选择一条差异记录。</div></div>`;
+      const baselineTaskId = data.baseline && data.baseline.source_task_id;
+      const currentTaskId = data.task && data.task.id;
+      return `
+        <div class="record-review-pane">
+          <div class="review-head">
+            <div>
+              <h3>${esc(recordName(row))} <span class="mono">${esc(recordId(row))}</span></h3>
+              <div class="muted">只比较复核后的共识结构化数据，不展示原始 OCR 证据。</div>
+            </div>
+            <div class="stats">
+              <span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span>
+              <span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span>
+            </div>
+          </div>
+          <div class="review-body">
+            <div class="image-pair">
+              ${renderImageBatch("基线批次图片", baselineTaskId, row, "baseline")}
+              ${renderImageBatch("本次批次图片", currentTaskId, row, "current")}
+            </div>
+            ${renderBasicCompare(row)}
+            ${renderEmploymentCompare(row)}
+          </div>
+        </div>
+      `;
+    }
+
+    function compareDetailUrl(row, data, pos) {
+      const params = new URLSearchParams({
+        baseline_id: compareBaseline.value || (data.baseline && data.baseline.id) || "",
+        task_id: compareTask.value || (data.task && data.task.id) || "",
+        idx: String(row._compare_idx ?? ""),
+        pos: String(pos ?? ""),
+      });
+      return `/static/baseline_compare_detail.html?${params.toString()}`;
+    }
+
     async function submitBaselineUpdate(data) {
       const rows = prepareCompareRows(data.records || []);
       const decisions = readCompareDecisions(data);
       const decisionRows = rows.filter((row) => rowDecisionRequiredCount(row) > 0);
-      const doneRows = decisionRows.filter((row) => {
-        const required = rowDecisionRequiredCount(row);
-        return rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
-      });
+      const doneRows = decisionRows.filter((row) => rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= rowDecisionRequiredCount(row));
       const pendingRows = Math.max(0, decisionRows.length - doneRows.length);
       if (!decisionRows.length) {
         alert("本次比对没有需要人工裁决的业务差异，无需生成新的业务基线版本。");
@@ -1472,9 +2188,9 @@
       const s = data.summary || {};
       const rows = prepareCompareRows(data.records || []);
       const decisions = readCompareDecisions(data);
-      const aggregateScopeRows = applyCompareColumnFilters(applyCompareDetailFilters(rows), decisions);
       const detailRows = applyCompareDetailFilters(compareRowsByFilter(rows, compareFilter));
       compareHeaderBaseRows = detailRows;
+      const aggregateScopeRows = applyCompareColumnFilters(applyCompareDetailFilters(rows), decisions);
       const filteredRows = sortCompareRows(applyCompareColumnFilters(detailRows, decisions), decisions);
       const displayRows = filteredRows.slice(0, 800);
       saveCompareState(data, filteredRows);
