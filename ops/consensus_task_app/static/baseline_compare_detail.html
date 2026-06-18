@@ -550,10 +550,11 @@
       const c = pair.current || {};
       return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead><tbody>${compareRow("企业记录", companyRecordText(pair.baseline), companyRecordText(pair.current), "", { kind: "employment_company", key: String(pairIndex), allowManual: false })}</tbody></table></div>`;
     }
-    function companyDeleteButton(pairIndex) {
+    function companyDeleteButton(pairIndex, pair) {
+      const target = (pair && (pair.baseline || pair.current)) || {};
       const saved = currentDecision("employment_company", String(pairIndex));
       const active = saved.action === "remove";
-      return `<button type="button" class="decision-mini company-delete ${active ? "active" : ""}" data-company-remove="${esc(String(pairIndex))}" title="从新基线中删除该任职明细">删除</button>`;
+      return `<button type="button" class="decision-mini company-delete ${active ? "active" : ""}" data-company-remove="${esc(String(pairIndex))}" data-company-key="${esc(target.company_key || "")}" data-company-name="${esc(target.company_name || "")}" data-source-image="${esc(target.source_image || "")}" title="${active ? "取消删除，恢复该任职明细" : "从新基线中删除该任职明细"}">${active ? "恢复" : "删除"}</button>`;
     }
     function employmentSection() {
       if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") return oneSideEmployment();
@@ -567,7 +568,7 @@
             const b = p.baseline || {};
             const c = p.current || {};
             const body = (!p.baseline || !p.current) ? companyRecordDecision(p, pairIndex) : companyFieldCompare(p, pairIndex);
-            return `<details class="company" ${cls !== "ok" ? "open" : ""}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name || "—")}<small>${esc(companySub(b))}</small><div class="source-line">${sourceBadge(p.baseline, "baseline")}</div></div><div class="arr">→</div><div class="company-name">${esc(c.company_name || "—")}<small>${esc(companySub(c))}</small><div class="source-line">${sourceBadge(p.current, "current")}</div></div></div><span class="company-actions">${companyDeleteButton(pairIndex)}<span class="diff-status ${cls}">${esc(label)}</span></span></summary>${body}</details>`;
+            return `<details class="company" ${cls !== "ok" ? "open" : ""}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name || "—")}<small>${esc(companySub(b))}</small><div class="source-line">${sourceBadge(p.baseline, "baseline")}</div></div><div class="arr">→</div><div class="company-name">${esc(c.company_name || "—")}<small>${esc(companySub(c))}</small><div class="source-line">${sourceBadge(p.current, "current")}</div></div></div><span class="company-actions">${companyDeleteButton(pairIndex, p)}<span class="diff-status ${cls}">${esc(label)}</span></span></summary>${body}</details>`;
           }).join("")}</div>` : `<div class="empty">无任职企业明细。</div>`}
         </section>
       `;
@@ -732,7 +733,13 @@
         else if (kind === "employment_company") employmentCompanies[key] = item;
       }
       document.querySelectorAll("[data-company-remove].active").forEach((btn) => {
-        employmentCompanies[btn.dataset.companyRemove] = { action: "remove", value: "" };
+        employmentCompanies[btn.dataset.companyRemove] = {
+          action: "remove",
+          value: "",
+          company_key: btn.dataset.companyKey || "",
+          company_name: btn.dataset.companyName || "",
+          source_image: btn.dataset.sourceImage || "",
+        };
       });
       return { basic, employment, employment_companies: employmentCompanies };
     }
@@ -774,10 +781,13 @@
     function hasActiveCompanyCleanup() {
       return !!document.querySelector("[data-company-remove].active");
     }
+    function hasDirtyCompanyCleanup() {
+      return !!document.querySelector("[data-company-cleanup-dirty='1']");
+    }
     function refreshTopDecisionActionState() {
       const save = document.querySelector("[data-save-field-decisions]");
       if (!save) return;
-      save.disabled = !hasDecisionControls() && !hasActiveCompanyCleanup();
+      save.disabled = !hasDecisionControls() && !hasActiveCompanyCleanup() && !hasDirtyCompanyCleanup();
       const status = $("decisionStatus");
       if (status && save.disabled) status.textContent = "无待裁决字段；如需清理任职明细，先点击对应企业的删除。";
     }
@@ -805,8 +815,12 @@
     function toggleCompanyRemove(btn) {
       if (!btn) return;
       btn.classList.toggle("active");
+      btn.dataset.companyCleanupDirty = "1";
+      const active = btn.classList.contains("active");
+      btn.textContent = active ? "恢复" : "删除";
+      btn.title = active ? "取消删除，恢复该任职明细" : "从新基线中删除该任职明细";
       const status = $("decisionStatus");
-      if (status) status.textContent = btn.classList.contains("active") ? "已标记删除该任职明细，确认后请保存裁决。" : "已取消删除标记。";
+      if (status) status.textContent = active ? "已标记删除该任职明细，确认后请保存裁决。" : "已取消删除标记，保存后将恢复该任职明细。";
       refreshTopDecisionActionState();
     }
     function fillFieldDecisions(action, scope = "") {

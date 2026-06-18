@@ -79,6 +79,9 @@
       background: linear-gradient(90deg, rgba(127,157,140,.14), rgba(255,253,248,.82));
       box-shadow: inset 0 1px 0 rgba(127,157,140,.22), inset 0 -1px 0 rgba(127,157,140,.18);
     }
+    .baseline-row.selected td:first-child {
+      box-shadow: inset 4px 0 0 var(--green-strong), inset 0 1px 0 rgba(127,157,140,.22), inset 0 -1px 0 rgba(127,157,140,.18);
+    }
     .baseline-row.selected .title { color: var(--green-strong); }
     .baseline-actions { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
     .baseline-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
@@ -962,6 +965,7 @@
       const url = new URL(location.href);
       url.searchParams.set("id", id);
       history.replaceState(null, "", url);
+      renderList();
       document.querySelector(".compare-controls").scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
@@ -2267,11 +2271,18 @@
         alert(`还有 ${pendingRows} 条记录未裁决，请先进入详情页处理。`);
         return;
       }
-      const reason = window.prompt("确认提交全部裁决并生成新的 active golden 基线？可输入备注：", "批量裁决更新真实基线");
-      if (reason === null) return;
+      const defaultName = `${(data.baseline && (data.baseline.name || data.baseline.id)) || "真实基线"} / 裁决更新`;
+      const nextName = window.prompt("确认提交全部裁决并生成新的 active golden 基线。请输入新基线名称：", defaultName);
+      if (nextName === null) return;
+      const baselineName = String(nextName || "").trim();
+      if (!baselineName) {
+        alert("新基线名称不能为空。");
+        return;
+      }
       const payloadDecisions = decisionRows.map((row) => ({
         ...(decisions[String(row._compare_idx)] || {}),
         idx: Number(row._compare_idx),
+        record_key: row.record_key || "",
       }));
       const btn = compareResult.querySelector("#submitBaselineUpdate");
       if (btn) {
@@ -2287,8 +2298,8 @@
           body: JSON.stringify({
             task_id: taskId,
             type: "golden",
-            name: `${(data.baseline && (data.baseline.name || data.baseline.id)) || baselineId} / updated`,
-            notes: reason,
+            name: baselineName,
+            notes: "基线比对裁决更新",
             decisions: payloadDecisions,
           }),
         });

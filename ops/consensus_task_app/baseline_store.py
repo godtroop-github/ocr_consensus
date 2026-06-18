@@ -654,12 +654,17 @@ class BaselineStore:
         compare = self.compare_task_to_baseline(baseline_id, task)
         parent = self.get_baseline(baseline_id, include_records=False)
         decision_by_idx: Dict[int, Dict[str, Any]] = {}
+        decision_by_record_key: Dict[str, Dict[str, Any]] = {}
         for item in decisions or []:
             try:
                 idx = int(item.get("idx"))
             except Exception:
-                continue
-            decision_by_idx[idx] = item
+                idx = -1
+            if idx >= 0:
+                decision_by_idx[idx] = item
+            record_key = _to_text(item.get("record_key"))
+            if record_key:
+                decision_by_record_key[record_key] = item
 
         new_baseline_id = datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:8]
         baseline_name = name.strip() or f"{parent.get('name') or baseline_id} updated"
@@ -691,9 +696,9 @@ class BaselineStore:
             return dict(diff.get("baseline") or {}), list(diff.get("baseline_employment") or []), action or "keep_baseline"
 
         for idx, diff in enumerate(compare.get("records") or []):
-            decision = decision_by_idx.get(idx, {})
+            decision = decision_by_idx.get(idx) or decision_by_record_key.get(_to_text(diff.get("record_key"))) or {}
             record, employment_rows, effective_action = selected_record_from_diff(diff, decision)
-            if idx in decision_by_idx:
+            if idx in decision_by_idx or _to_text(diff.get("record_key")) in decision_by_record_key:
                 selected_count += 1
             if record is None:
                 continue
@@ -970,12 +975,40 @@ class BaselineStore:
             "承担职务": "role",
             "持股比例": "share_ratio",
         }
+
+        def company_matches_decision(row: Dict[str, Any], item: Dict[str, Any]) -> bool:
+            if not row or not item:
+                return False
+            row_key = _to_text(row.get("company_key"))
+            row_name = _to_text(row.get("company_name"))
+            row_image = _to_text(row.get("source_image"))
+            item_key = _to_text(item.get("company_key"))
+            item_name = _to_text(item.get("company_name"))
+            item_image = _to_text(item.get("source_image"))
+            if row_key and item_key and row_key == item_key:
+                return True
+            if row_name and item_name and row_name == item_name:
+                return not item_image or not row_image or item_image == row_image
+            return False
+
+        def remove_decision_for_pair(pair_index: int, baseline: Dict[str, Any], current: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            by_index = employment_companies.get(str(pair_index))
+            if isinstance(by_index, dict) and by_index.get("action") == "remove":
+                return by_index
+            for item in employment_companies.values():
+                if not isinstance(item, dict) or item.get("action") != "remove":
+                    continue
+                if company_matches_decision(baseline, item) or company_matches_decision(current, item):
+                    return item
+            return None
+
         merged: List[Dict[str, Any]] = []
         for pair_index, pair in enumerate(self._align_public_employment_pairs(baseline_rows, current_rows)):
             baseline = pair.get("baseline") or {}
             current = pair.get("current") or {}
             company_decision = employment_companies.get(str(pair_index))
-            if isinstance(company_decision, dict) and company_decision.get("action") == "remove":
+            remove_decision = remove_decision_for_pair(pair_index, baseline, current)
+            if remove_decision:
                 continue
             if not baseline:
                 if isinstance(company_decision, dict) and company_decision.get("action") == "accept_current":
