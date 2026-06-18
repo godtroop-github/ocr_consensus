@@ -279,7 +279,7 @@
     }
     .compare-filter-bar {
       display: grid;
-      grid-template-columns: minmax(220px, 1.4fr) repeat(5, minmax(118px, .7fr)) auto auto auto;
+      grid-template-columns: minmax(260px, 1fr) auto;
       gap: 9px;
       align-items: center;
       margin: 0 0 14px;
@@ -806,11 +806,13 @@
     let tasks = [];
     let lastCompareData = null;
     let compareFilter = "review";
-    let compareDetailFilters = { q: "", business: "", capture: "", employment: "", severity: "", decision: "", reviewOnly: false };
+    let compareDetailFilters = { q: "" };
     let compareColumnFilters = {};
     let compareColumnSort = { key: "", direction: "asc" };
     let compareHeaderBaseRows = [];
     let compareOpenFilterKey = "";
+    let compareSearchTimer = null;
+    let shouldFocusCompareSearch = false;
     const COMPARE_STATE_KEY = "ocr_baseline_compare_state_v2";
     const COMPARE_DECISIONS_KEY = "ocr_baseline_compare_decisions_v1";
 
@@ -1127,6 +1129,13 @@
       return map[status] || status || "—";
     }
 
+    function captureReviewStatus(row) {
+      if (!row || row.match_status !== "matched") return "none";
+      if (row.capture_time_diff_status === "same") return "suspicious";
+      if (["older", "invalid", "missing_current"].includes(row.capture_time_diff_status)) return "warning";
+      return "ok";
+    }
+
     function recordName(row) {
       const current = row.current || {};
       const baseline = row.baseline || {};
@@ -1241,8 +1250,7 @@
       if (key === "employment") return rows.filter((r) => (r.employment_diffs || []).length);
       if (key === "new") return rows.filter((r) => r.business_diff_status === "new");
       if (key === "missing") return rows.filter((r) => r.business_diff_status === "missing");
-      if (key === "older") return rows.filter((r) => r.capture_time_diff_status === "older");
-      if (key === "capture_same") return rows.filter((r) => r.match_status === "matched" && r.capture_time_diff_status === "same");
+      if (key === "older") return rows.filter((r) => captureReviewStatus(r) === "suspicious");
       if (key === "time") return rows.filter((r) => r.business_diff_status === "same" && r.capture_time_diff_status !== "same");
       return rows;
     }
@@ -1351,7 +1359,7 @@
         compareTask.value = state.task_id;
       }
       compareFilter = state.compareFilter || "review";
-      compareDetailFilters = { q: "", business: "", capture: "", employment: "", severity: "", decision: "", reviewOnly: false, ...(state.compareDetailFilters || {}) };
+      compareDetailFilters = { q: (state.compareDetailFilters && state.compareDetailFilters.q) || "" };
       compareColumnFilters = {};
       for (const [key, values] of Object.entries(state.compareColumnFilters || {})) {
         compareColumnFilters[key] = new Set(Array.isArray(values) ? values : []);
@@ -1364,33 +1372,7 @@
     function renderCompareDetailFilters() {
       return `
         <div class="compare-filter-bar">
-          <input id="compareSearch" type="text" value="${esc(compareDetailFilters.q)}" placeholder="搜索编号 / 姓名 / 身份证号 / 字段值，输入后回车" />
-          <select id="compareBusinessFilter">
-            <option value="">业务状态</option>
-            ${["same", "changed", "new", "missing"].map((key) => `<option value="${key}" ${compareDetailFilters.business === key ? "selected" : ""}>${esc(bizLabel(key))}</option>`).join("")}
-          </select>
-          <select id="compareCaptureFilter">
-            <option value="">采集时间</option>
-            ${["same", "newer", "older", "missing_current", "filled", "invalid", "changed", "missing"].map((key) => `<option value="${key}" ${compareDetailFilters.capture === key ? "selected" : ""}>${esc(captureLabel(key))}</option>`).join("")}
-          </select>
-          <select id="compareEmploymentFilter">
-            <option value="">任职明细</option>
-            <option value="changed" ${compareDetailFilters.employment === "changed" ? "selected" : ""}>任职有差异</option>
-            <option value="has" ${compareDetailFilters.employment === "has" ? "selected" : ""}>有任职明细</option>
-            <option value="none" ${compareDetailFilters.employment === "none" ? "selected" : ""}>无任职明细</option>
-          </select>
-          <select id="compareSeverityFilter">
-            <option value="">风险等级</option>
-            ${["info", "low", "medium", "high", "critical"].map((key) => `<option value="${key}" ${compareDetailFilters.severity === key ? "selected" : ""}>${esc(severityLabel(key))}</option>`).join("")}
-          </select>
-          <select id="compareDecisionFilter">
-            <option value="">裁决状态</option>
-            <option value="pending" ${compareDetailFilters.decision === "pending" ? "selected" : ""}>待裁决</option>
-            <option value="done" ${compareDetailFilters.decision === "done" ? "selected" : ""}>已裁决</option>
-            <option value="none" ${compareDetailFilters.decision === "none" ? "selected" : ""}>无需裁决</option>
-          </select>
-          <label class="check-pill"><input id="compareReviewOnly" type="checkbox" ${compareDetailFilters.reviewOnly ? "checked" : ""} /> 只看需复核</label>
-          <button class="btn" id="compareApplyFilters" type="button">应用</button>
+          <input id="compareSearch" type="text" value="${esc(compareDetailFilters.q)}" placeholder="实时搜索编号 / 姓名 / 身份证号 / 字段值 / 企业 / 图片证据" />
           <button class="btn" id="compareClearFilters" type="button">清空</button>
         </div>
       `;
@@ -1533,8 +1515,7 @@
         ["employment", "任职变化", rows.filter((r) => (r.employment_diffs || []).length).length],
         ["new", "新增", rows.filter((r) => r.business_diff_status === "new").length],
         ["missing", "缺失", rows.filter((r) => r.business_diff_status === "missing").length],
-        ["capture_same", "截图疑点", rows.filter((r) => r.match_status === "matched" && r.capture_time_diff_status === "same").length],
-        ["older", "疑似旧截图", rows.filter((r) => r.capture_time_diff_status === "older").length],
+        ["older", "截图疑点", rows.filter((r) => captureReviewStatus(r) === "suspicious").length],
         ["time", "仅时间变化", rows.filter((r) => r.business_diff_status === "same" && r.capture_time_diff_status !== "same").length],
       ];
     }
@@ -1667,6 +1648,12 @@
           c.share_ratio
         );
       }
+      for (const diff of row.image_diffs || []) {
+        parts.push(diff.field_name, diff.baseline_value, diff.current_value, diff.diff_type, diff.baseline_image, diff.current_image);
+      }
+      for (const detail of [...(row.baseline_image_details || []), ...(row.current_image_details || [])]) {
+        parts.push(detail.name, detail.path, detail.size_bytes, detail.modified_at, detail.width, detail.height);
+      }
       parts.push(...(row.baseline_images || []), ...(row.current_images || []));
       return parts.map((x) => String(x || "").toLowerCase()).join(" ");
     }
@@ -1674,26 +1661,6 @@
     function applyCompareDetailFilters(rows) {
       const q = (compareDetailFilters.q || "").trim().toLowerCase();
       return rows.filter((row) => {
-        if (compareDetailFilters.business && row.business_diff_status !== compareDetailFilters.business) return false;
-        if (compareDetailFilters.capture && row.capture_time_diff_status !== compareDetailFilters.capture) return false;
-        if (compareDetailFilters.employment) {
-          const baselineCount = (row.baseline_employment || []).length;
-          const currentCount = (row.current_employment || []).length;
-          const diffCount = (row.employment_diffs || []).length;
-          if (compareDetailFilters.employment === "changed" && !diffCount) return false;
-          if (compareDetailFilters.employment === "has" && !baselineCount && !currentCount) return false;
-          if (compareDetailFilters.employment === "none" && (baselineCount || currentCount)) return false;
-        }
-        if (compareDetailFilters.severity && row.severity !== compareDetailFilters.severity) return false;
-        if (compareDetailFilters.reviewOnly && !row.requires_review) return false;
-        if (compareDetailFilters.decision) {
-          const decisions = lastCompareData ? readCompareDecisions(lastCompareData) : {};
-          const needs = rowNeedsDecision(row);
-          const done = rowDecisionDone(row, decisions);
-          if (compareDetailFilters.decision === "pending" && (!needs || done)) return false;
-          if (compareDetailFilters.decision === "done" && (!needs || !done)) return false;
-          if (compareDetailFilters.decision === "none" && needs) return false;
-        }
         if (q && !rowSearchText(row).includes(q)) return false;
         return true;
       });
@@ -1702,12 +1669,6 @@
     function hasCompareDetailFilters() {
       return !!(
         (compareDetailFilters.q || "").trim()
-        || compareDetailFilters.business
-        || compareDetailFilters.capture
-        || compareDetailFilters.employment
-        || compareDetailFilters.severity
-        || compareDetailFilters.decision
-        || compareDetailFilters.reviewOnly
       );
     }
 
@@ -1721,6 +1682,7 @@
       { key: "capture", label: "截图时间" },
       { key: "basic", label: "基础差异" },
       { key: "employment", label: "任职差异" },
+      { key: "image", label: "图片证据" },
       { key: "decision", label: "裁决" },
     ];
 
@@ -1735,8 +1697,9 @@
       if (key === "name") return recordName(row);
       if (key === "masked_id") return recordMaskedId(row);
       if (key === "capture") return recordCapture(row);
-      if (key === "basic") return (row.business_diffs || []).length ? renderBasicDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "基础信息无变化";
+      if (key === "basic") return (row.field_diffs || []).length ? renderBasicDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "基础信息无变化";
       if (key === "employment") return (row.employment_diffs || []).length ? renderEmploymentSummaryChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "任职明细无变化";
+      if (key === "image") return (row.image_diffs || []).length ? renderImageDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "图片证据无变化";
       if (key === "decision") {
         if (!rowNeedsDecision(row)) return "无需裁决";
         const decision = decisions[String(row._compare_idx)];
@@ -1949,7 +1912,23 @@
     }
 
     function renderImageDiffChips(row) {
-      return "";
+      const diffs = row.image_diffs || [];
+      if (!diffs.length) return `<span class="diff-chip same">图片证据无变化</span>`;
+      const labels = {
+        image_added: "图片增加",
+        image_missing: "图片减少",
+        dimensions_changed: "尺寸变化",
+        size_bytes_changed: "大小变化",
+        modified_at_changed: "时间变化",
+      };
+      const grouped = {};
+      for (const diff of diffs) {
+        const key = diff.diff_type || "image_changed";
+        grouped[key] = (grouped[key] || 0) + 1;
+      }
+      return Object.entries(grouped).slice(0, 4).map(([key, count]) => `
+        <span class="diff-chip changed">${esc(labels[key] || key)} ${Number(count || 0)}</span>
+      `).join("") + (Object.keys(grouped).length > 4 ? `<span class="diff-chip changed">另 ${Object.keys(grouped).length - 4} 类</span>` : "");
     }
 
     function recordStatusLabel(row) {
@@ -2349,6 +2328,7 @@
                 ${renderCompareHeaderCell("capture")}
                 ${renderCompareHeaderCell("basic")}
                 ${renderCompareHeaderCell("employment")}
+                ${renderCompareHeaderCell("image")}
                 ${renderCompareHeaderCell("decision")}
                 <th class="right">操作</th>
               </tr>
@@ -2364,6 +2344,7 @@
                   <td>${esc(recordCapture(row))}</td>
                   <td><div class="diff-chips">${renderBasicDiffChips(row)}</div></td>
                   <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
+                  <td><div class="diff-chips">${renderImageDiffChips(row)}</div></td>
                   <td>${
                     rowNeedsDecision(row)
                       ? `<span class="decision-chip ${rowDecisionDone(row, decisions) ? "done" : "need"}">${esc(rowDecisionDone(row, decisions) ? (decisionLabel(decisions[String(row._compare_idx)]) || "已裁决") : "待裁决")}</span>`
@@ -2371,7 +2352,7 @@
                   }</td>
                   <td class="right"><a class="btn" href="${esc(compareDetailUrl(row, data, pos))}">详情</a></td>
                 </tr>
-              `).join("") : `<tr><td colspan="10"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
+              `).join("") : `<tr><td colspan="11"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
             </tbody>
           </table>
         </div>
@@ -2394,10 +2375,21 @@
       const search = compareResult.querySelector("#compareSearch");
       search && search.addEventListener("input", () => {
         compareDetailFilters.q = search.value || "";
+        shouldFocusCompareSearch = true;
+        clearTimeout(compareSearchTimer);
+        compareSearchTimer = setTimeout(() => renderCompareResult(lastCompareData), 120);
       });
       search && search.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") renderCompareResult(lastCompareData);
       });
+      if (shouldFocusCompareSearch) {
+        const focusedSearch = compareResult.querySelector("#compareSearch");
+        if (focusedSearch) {
+          focusedSearch.focus();
+          focusedSearch.setSelectionRange(focusedSearch.value.length, focusedSearch.value.length);
+        }
+        shouldFocusCompareSearch = false;
+      }
       const apply = compareResult.querySelector("#compareApplyFilters");
       apply && apply.addEventListener("click", () => renderCompareResult(lastCompareData));
       const business = compareResult.querySelector("#compareBusinessFilter");
@@ -2432,7 +2424,7 @@
       });
       const clear = compareResult.querySelector("#compareClearFilters");
       clear && clear.addEventListener("click", () => {
-        compareDetailFilters = { q: "", business: "", capture: "", employment: "", severity: "", decision: "", reviewOnly: false };
+        compareDetailFilters = { q: "" };
         compareColumnFilters = {};
         compareColumnSort = { key: "", direction: "asc" };
         renderCompareResult(lastCompareData);
@@ -2458,7 +2450,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || "比对失败");
         compareFilter = "review";
-        compareDetailFilters = { q: "", business: "", capture: "", employment: "", severity: "", decision: "", reviewOnly: false };
+        compareDetailFilters = { q: "" };
         compareColumnFilters = {};
         compareColumnSort = { key: "", direction: "asc" };
         renderCompareResult(data);

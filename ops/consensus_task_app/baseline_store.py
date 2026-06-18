@@ -1550,7 +1550,9 @@ class BaselineStore:
         employment_diffs = employment_diff["diffs"]
         baseline_images = self._record_images(baseline, baseline_employment or [])
         current_images = self._record_images(current, current_employment or [])
-        image_diffs: List[Dict[str, Any]] = []
+        baseline_image_details = self._image_details(baseline_images, baseline_image_index or {})
+        current_image_details = self._image_details(current_images, current_image_index or {})
+        image_diffs = self._diff_images(baseline_images, current_images, baseline_image_details, current_image_details)
         business_changed = bool(field_diffs or employment_diffs)
         business_status = "changed" if business_changed else "same"
         severity = self._record_severity(business_changed, capture_status, field_diffs, employment_diffs)
@@ -1577,8 +1579,8 @@ class BaselineStore:
             "current_employment": [self._public_employment_row(row) for row in current_employment or []],
             "baseline_images": baseline_images,
             "current_images": current_images,
-            "baseline_image_details": self._image_details(baseline_images, baseline_image_index or {}),
-            "current_image_details": self._image_details(current_images, current_image_index or {}),
+            "baseline_image_details": baseline_image_details,
+            "current_image_details": current_image_details,
         }
 
     def _new_record_diff(
@@ -1970,16 +1972,62 @@ class BaselineStore:
             add(row.get("source_image"))
         return images
 
-    def _diff_images(self, baseline_images: List[str], current_images: List[str]) -> List[Dict[str, Any]]:
+    def _diff_images(
+        self,
+        baseline_images: List[str],
+        current_images: List[str],
+        baseline_details: Optional[List[Dict[str, Any]]] = None,
+        current_details: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
         if not baseline_images or not current_images:
             return []
         baseline_map = {self._image_key(image): image for image in baseline_images if self._image_key(image)}
         current_map = {self._image_key(image): image for image in current_images if self._image_key(image)}
+        baseline_detail_map = {
+            self._image_key(detail.get("name")): detail
+            for detail in baseline_details or []
+            if self._image_key(detail.get("name"))
+        }
+        current_detail_map = {
+            self._image_key(detail.get("name")): detail
+            for detail in current_details or []
+            if self._image_key(detail.get("name"))
+        }
         baseline_set = set(baseline_map)
         current_set = set(current_map)
-        return self._image_missing_diffs([baseline_map[key] for key in sorted(baseline_set - current_set)]) + self._image_added_diffs(
+        diffs = self._image_missing_diffs([baseline_map[key] for key in sorted(baseline_set - current_set)]) + self._image_added_diffs(
             [current_map[key] for key in sorted(current_set - baseline_set)]
         )
+        for key in sorted(baseline_set & current_set):
+            baseline_detail = baseline_detail_map.get(key) or {}
+            current_detail = current_detail_map.get(key) or {}
+            for label, field in [("图片尺寸", "dimensions"), ("图片大小", "size_bytes"), ("图片时间", "modified_at")]:
+                if field == "dimensions":
+                    baseline_value = self._image_dimensions(baseline_detail)
+                    current_value = self._image_dimensions(current_detail)
+                else:
+                    baseline_value = _to_text(baseline_detail.get(field))
+                    current_value = _to_text(current_detail.get(field))
+                if not baseline_value or not current_value or baseline_value == current_value:
+                    continue
+                diffs.append(
+                    {
+                        "section": "image",
+                        "field_name": label,
+                        "baseline_value": baseline_value,
+                        "current_value": current_value,
+                        "diff_type": f"{field}_changed",
+                        "severity": "low",
+                        "baseline_image": baseline_map.get(key),
+                        "current_image": current_map.get(key),
+                    }
+                )
+        return diffs
+
+    def _image_dimensions(self, detail: Dict[str, Any]) -> str:
+        width = _to_text(detail.get("width"))
+        height = _to_text(detail.get("height"))
+        return f"{width}x{height}" if width and height else ""
 
     def _image_key(self, value: Any) -> str:
         text = Path(unquote(_to_text(value))).name.strip()
@@ -2049,10 +2097,13 @@ class BaselineStore:
         if image_diffs:
             added = len([diff for diff in image_diffs if diff.get("diff_type") == "image_added"])
             missing = len([diff for diff in image_diffs if diff.get("diff_type") == "image_missing"])
+            meta = len([diff for diff in image_diffs if diff.get("diff_type") not in {"image_added", "image_missing"}])
             if added:
                 summary.append(f"图片增加 {added}")
             if missing:
                 summary.append(f"图片减少 {missing}")
+            if meta:
+                summary.append(f"图片证据变化 {meta}")
 
         if not summary and capture_status not in {"same"}:
             summary.append(f"采集时间 {capture_status}")
