@@ -79,6 +79,24 @@
       background: #EFF7F2;
       box-shadow: inset 4px 0 0 var(--green-strong);
     }
+    .baseline-actions { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+    .baseline-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .icon-btn {
+      width: 30px;
+      height: 30px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #FFFDF8;
+      color: var(--green-strong);
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 5px 14px rgba(41, 34, 24, .06);
+    }
+    .icon-btn:hover { background: var(--green-soft); border-color: #BFD8CA; }
+    .icon-btn.danger { color: var(--red); }
+    .icon-btn.danger:hover { background: var(--red-soft); border-color: #EAC8C1; }
     .card + .card { margin-top: 20px; }
     .card-head {
       display: flex;
@@ -848,8 +866,12 @@
                 <td class="name-cell">
                   <div class="title">${esc(b.name)}</div>
                   <div class="mono">${esc(b.id)}</div>
+                  <div class="baseline-meta">
+                    ${b.is_active_golden ? `<span class="chip golden">active</span>` : ""}
+                    <span class="chip ${esc(b.type)}">${esc(typeLabel(b.type))}</span>
+                  </div>
                 </td>
-                <td><span class="chip ${esc(b.type)}">${esc(typeLabel(b.type))}${b.is_active_golden ? " · active" : ""}</span></td>
+                <td><span class="chip ${esc(b.type)}">${esc(typeLabel(b.type))}</span></td>
                 <td>
                   <div>${esc(b.source_task_name || "—")}</div>
                   <div class="mono">${esc(b.source_task_id || "")}</div>
@@ -858,7 +880,11 @@
                 <td>${Number(b.image_count || 0)}</td>
                 <td class="mono">${esc(fmtTime(b.created_at))}</td>
                 <td class="right">
-                  ${b.id === selectedId ? `<span class="chip">当前基线</span>` : `<span class="muted">点击选择</span>`}
+                  <span class="baseline-actions">
+                    ${b.id === selectedId ? `<span class="chip">当前</span>` : ""}
+                    <button class="icon-btn" type="button" title="重命名" onclick="renameBaseline(event, '${esc(b.id)}')">✎</button>
+                    <button class="icon-btn danger" type="button" title="删除" onclick="deleteBaseline(event, '${esc(b.id)}')">×</button>
+                  </span>
                 </td>
               </tr>
             `).join("")}
@@ -882,6 +908,52 @@
         : `<option value="">暂无已完成任务</option>`;
       compareBtn.disabled = !baselines.length || !completed.length;
       swapCompareBtn.disabled = !baselines.length || !completed.length;
+    }
+
+    async function renameBaseline(event, id) {
+      event.stopPropagation();
+      const item = baselines.find((b) => String(b.id) === String(id));
+      if (!item) return;
+      const name = window.prompt("输入新的基线名称：", item.name || "");
+      if (name === null) return;
+      const nextName = name.trim();
+      if (!nextName) {
+        alert("基线名称不能为空。");
+        return;
+      }
+      try {
+        const res = await fetch(`/api/baselines/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: nextName }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "重命名失败");
+        await refresh();
+      } catch (err) {
+        alert(err.message || String(err));
+      }
+    }
+
+    async function deleteBaseline(event, id) {
+      event.stopPropagation();
+      const item = baselines.find((b) => String(b.id) === String(id));
+      if (!item) return;
+      const label = `${item.name || id}\n${id}`;
+      if (!window.confirm(`确认删除这个基线版本？\n\n${label}\n\n该操作会删除该版本的基础信息和任职明细。`)) return;
+      try {
+        const res = await fetch(`/api/baselines/${encodeURIComponent(id)}`, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "删除失败");
+        const url = new URL(location.href);
+        if (url.searchParams.get("id") === id) {
+          url.searchParams.delete("id");
+          history.replaceState(null, "", url);
+        }
+        await refresh();
+      } catch (err) {
+        alert(err.message || String(err));
+      }
     }
 
     function selectBaselineForCompare(id) {

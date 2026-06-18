@@ -2079,6 +2079,28 @@ async def get_baseline(baseline_id: str):
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+@app.patch("/api/baselines/{baseline_id}")
+async def update_baseline(baseline_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+    payload = payload or {}
+    try:
+        baseline = BASELINE_STORE.update_baseline(
+            baseline_id,
+            name=str(payload.get("name") or "").strip(),
+            notes=str(payload.get("notes")) if payload.get("notes") is not None else None,
+        )
+    except BaselineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "baseline": baseline}
+
+
+@app.delete("/api/baselines/{baseline_id}")
+async def delete_baseline(baseline_id: str):
+    try:
+        return BASELINE_STORE.delete_baseline(baseline_id)
+    except BaselineError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 @app.post("/api/compare")
 async def compare_with_baseline(payload: Optional[Dict[str, Any]] = Body(default=None)):
     payload = payload or {}

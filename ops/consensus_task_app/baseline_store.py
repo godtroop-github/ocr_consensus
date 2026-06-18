@@ -268,6 +268,50 @@ class BaselineStore:
             ).fetchall()
         return [_row_to_dict(row) for row in rows]
 
+    def update_baseline(self, baseline_id: str, name: str = "", notes: Optional[str] = None) -> Dict[str, Any]:
+        self.init_db()
+        baseline_id = _to_text(baseline_id)
+        name = _to_text(name)
+        if not baseline_id:
+            raise BaselineError("baseline_id is required")
+        if not name:
+            raise BaselineError("baseline name is required")
+        with self.connect() as conn:
+            existing = conn.execute("SELECT * FROM baseline_versions WHERE id = ?", (baseline_id,)).fetchone()
+            if not existing:
+                raise BaselineError("baseline not found")
+            if notes is None:
+                conn.execute("UPDATE baseline_versions SET name = ? WHERE id = ?", (name, baseline_id))
+            else:
+                conn.execute("UPDATE baseline_versions SET name = ?, notes = ? WHERE id = ?", (name, _to_text(notes), baseline_id))
+        return self.get_baseline(baseline_id, include_records=False)
+
+    def delete_baseline(self, baseline_id: str) -> Dict[str, Any]:
+        self.init_db()
+        baseline_id = _to_text(baseline_id)
+        if not baseline_id:
+            raise BaselineError("baseline_id is required")
+        with self.connect() as conn:
+            existing = conn.execute("SELECT * FROM baseline_versions WHERE id = ?", (baseline_id,)).fetchone()
+            if not existing:
+                raise BaselineError("baseline not found")
+            was_active_golden = bool(existing["is_active_golden"])
+            conn.execute("DELETE FROM baseline_versions WHERE id = ?", (baseline_id,))
+            promoted = ""
+            if was_active_golden:
+                row = conn.execute(
+                    """
+                    SELECT id FROM baseline_versions
+                    WHERE type = 'golden' AND status = 'active'
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                if row:
+                    promoted = _to_text(row["id"])
+                    conn.execute("UPDATE baseline_versions SET is_active_golden = 1 WHERE id = ?", (promoted,))
+        return {"ok": True, "id": baseline_id, "promoted_active_golden": promoted}
+
     def get_baseline(self, baseline_id: str, include_records: bool = True) -> Dict[str, Any]:
         self.init_db()
         with self.connect() as conn:
@@ -842,6 +886,22 @@ class BaselineStore:
             return _to_text(decision.get("value"))
         return _to_text(baseline_value)
 
+    def _decision_pick_count_triplet(
+        self,
+        baseline: Dict[str, Any],
+        current: Dict[str, Any],
+        decision: Dict[str, Any],
+    ) -> Dict[str, str]:
+        keys = ["related_count", "employment_count", "shareholding_count"]
+        action = _to_text(decision.get("action"))
+        if action == "accept_current":
+            return {key: _to_text(current.get(key)) for key in keys}
+        if action == "manual":
+            numbers = re.findall(r"-?\d+", _to_text(decision.get("value")))
+            if len(numbers) >= 3:
+                return dict(zip(keys, numbers[:3]))
+        return {key: _to_text(baseline.get(key)) for key in keys}
+
     def _merge_record_by_field_decisions(self, diff: Dict[str, Any], decision: Dict[str, Any]) -> Dict[str, Any]:
         baseline = dict(diff.get("baseline") or {})
         current = dict(diff.get("current") or {})
@@ -858,6 +918,9 @@ class BaselineStore:
             field_decision = basic.get(label)
             if isinstance(field_decision, dict):
                 record[key] = self._decision_pick_value(baseline.get(key), current.get(key), field_decision)
+        group_decision = basic.get("企/任/参")
+        if isinstance(group_decision, dict):
+            record.update(self._decision_pick_count_triplet(baseline, current, group_decision))
         return record
 
     def _align_public_employment_pairs(
