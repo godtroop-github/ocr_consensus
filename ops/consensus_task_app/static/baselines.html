@@ -76,9 +76,10 @@
     .compact-baselines .table-wrap { max-height: 260px; overflow: auto; }
     .baseline-row { cursor: pointer; }
     .baseline-row.selected td {
-      background: #EFF7F2;
-      box-shadow: inset 4px 0 0 var(--green-strong);
+      background: linear-gradient(90deg, rgba(127,157,140,.14), rgba(255,253,248,.82));
+      box-shadow: inset 0 1px 0 rgba(127,157,140,.22), inset 0 -1px 0 rgba(127,157,140,.18);
     }
+    .baseline-row.selected .title { color: var(--green-strong); }
     .baseline-actions { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
     .baseline-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
     .icon-btn {
@@ -1470,8 +1471,12 @@
 
     function renderDecisionBar(data, rows) {
       const decisions = readCompareDecisions(data);
-      const decisionRows = rows.filter((row) => rowDecisionRequiredCount(row) > 0);
-      const doneRows = decisionRows.filter((row) => rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= rowDecisionRequiredCount(row));
+      const decisionRows = rows.filter((row) => rowDecisionRequiredCount(row) > 0 || decisions[String(row._compare_idx)]);
+      const doneRows = decisionRows.filter((row) => {
+        const required = rowDecisionRequiredCount(row);
+        if (!required) return !!decisions[String(row._compare_idx)];
+        return rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
+      });
       const pendingRows = Math.max(0, decisionRows.length - doneRows.length);
       const statusHtml = decisionRows.length === 0
         ? `<span class="decision-chip done">无需裁决</span>`
@@ -2230,8 +2235,12 @@
     async function submitBaselineUpdate(data) {
       const rows = prepareCompareRows(data.records || []);
       const decisions = readCompareDecisions(data);
-      const decisionRows = rows.filter((row) => rowDecisionRequiredCount(row) > 0);
-      const doneRows = decisionRows.filter((row) => rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= rowDecisionRequiredCount(row));
+      const decisionRows = rows.filter((row) => rowDecisionRequiredCount(row) > 0 || decisions[String(row._compare_idx)]);
+      const doneRows = decisionRows.filter((row) => {
+        const required = rowDecisionRequiredCount(row);
+        if (!required) return !!decisions[String(row._compare_idx)];
+        return rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
+      });
       const pendingRows = Math.max(0, decisionRows.length - doneRows.length);
       if (!decisionRows.length) {
         alert("本次比对没有需要人工裁决的业务差异，无需生成新的业务基线版本。");

@@ -962,6 +962,8 @@ class BaselineStore:
             baseline = pair.get("baseline") or {}
             current = pair.get("current") or {}
             company_decision = employment_companies.get(str(pair_index))
+            if isinstance(company_decision, dict) and company_decision.get("action") == "remove":
+                continue
             if not baseline:
                 if isinstance(company_decision, dict) and company_decision.get("action") == "accept_current":
                     merged.append(dict(current))
@@ -1753,7 +1755,7 @@ class BaselineStore:
             if idx in used_current:
                 continue
             current_key = _to_text(current_row.get("company_key"))
-            if baseline_key and current_key and baseline_key == current_key and not baseline_placeholder:
+            if baseline_key and current_key and baseline_key == current_key:
                 return idx
         for idx, current_row in enumerate(current_rows):
             if idx in used_current:
