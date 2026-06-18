@@ -217,7 +217,7 @@
     function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
     function chip(text, cls = "") { return `<span class="chip ${cls}">${esc(text)}</span>`; }
     function severityLabel(v) { return ({ info: "提示", low: "低", medium: "中", high: "高", critical: "极高" }[v] || v || "—"); }
-    function statusLabel(r) { if (r.match_status === "unmatched_new") return "新增"; if (r.match_status === "unmatched_missing") return "减少"; if (r.requires_review) return "待复核"; return "正常"; }
+    function statusLabel(r) { if (r.match_status === "unmatched_new") return "新增"; if (r.match_status === "unmatched_missing") return "减少"; if (r.requires_review) return "变化"; return "正常"; }
     function statusClass(r) { if (r.requires_review) return "bad"; if (["newer", "older", "changed", "missing", "filled", "invalid", "missing_current"].includes(r.capture_time_diff_status)) return "warn"; return "ok"; }
     function rec(side) { return (row && row[side]) || {}; }
     function recordName() { return rec("current").person_name || rec("baseline").person_name || "—"; }

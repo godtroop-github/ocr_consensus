@@ -541,8 +541,8 @@
     .diff-chip {
       display: inline-flex;
       align-items: center;
-      max-width: 240px;
-      padding: 4px 7px;
+      max-width: 96px;
+      padding: 4px 6px;
       border-radius: 999px;
       border: 1px solid var(--line-soft);
       background: #FFFDF8;
@@ -556,6 +556,39 @@
     .diff-chip.changed { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
     .diff-chip.bad { color: var(--red); background: var(--red-soft); border-color: #EAC8C1; }
     .diff-chip.same { color: var(--green-strong); background: var(--green-soft); border-color: #CFE3D6; }
+    .compare-table {
+      table-layout: fixed;
+      min-width: 1180px;
+    }
+    .compare-table th,
+    .compare-table td {
+      padding: 9px 8px;
+    }
+    .compare-table .diff-chips {
+      gap: 4px;
+      min-width: 0;
+    }
+    .compare-actions {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .mini-action {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--muted);
+      padding: 5px 7px;
+      font-size: 11px;
+      font-weight: 850;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .mini-action:hover { background: var(--green-soft); color: var(--green-strong); border-color: #CFE3D6; }
+    .mini-action.skip { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
     .record-review-pane {
       border: 1px solid var(--line-soft);
       border-radius: 20px;
@@ -872,10 +905,6 @@
                 <td class="name-cell">
                   <div class="title">${esc(b.name)}</div>
                   <div class="mono">${esc(b.id)}</div>
-                  <div class="baseline-meta">
-                    ${b.is_active_golden ? `<span class="chip golden">active</span>` : ""}
-                    <span class="chip ${esc(b.type)}">${esc(typeLabel(b.type))}</span>
-                  </div>
                 </td>
                 <td><span class="chip ${esc(b.type)}">${esc(typeLabel(b.type))}</span></td>
                 <td>
@@ -1936,30 +1965,55 @@
       `).join("") + (Object.keys(grouped).length > 5 ? `<span class="diff-chip changed">另 ${Object.keys(grouped).length - 5} 类</span>` : "");
     }
 
-    function renderImageDiffChips(row) {
+    function imageEvidenceFlags(row) {
+      const flags = { dimensions: false, size: false, time: false, count: false };
       const diffs = row.image_diffs || [];
-      if (!diffs.length) return `<span class="diff-chip same">图片证据无变化</span>`;
-      const labels = {
-        image_added: "图片增加",
-        image_missing: "图片减少",
-        dimensions_changed: "尺寸变化",
-        size_bytes_changed: "大小变化",
-        modified_at_changed: "时间变化",
-      };
-      const grouped = {};
       for (const diff of diffs) {
-        const key = diff.diff_type || "image_changed";
-        grouped[key] = (grouped[key] || 0) + 1;
+        const type = diff.diff_type || "";
+        if (["image_added", "image_missing"].includes(type)) flags.count = true;
+        if (type === "dimensions_changed") flags.dimensions = true;
+        if (type === "size_bytes_changed") flags.size = true;
       }
-      return Object.entries(grouped).slice(0, 4).map(([key, count]) => `
-        <span class="diff-chip changed">${esc(labels[key] || key)} ${Number(count || 0)}</span>
-      `).join("") + (Object.keys(grouped).length > 4 ? `<span class="diff-chip changed">另 ${Object.keys(grouped).length - 4} 类</span>` : "");
+      const baselineImages = row.baseline_images || [];
+      const currentImages = row.current_images || [];
+      if (baselineImages.length !== currentImages.length) flags.count = true;
+      const keyOf = (value) => String(value || "").split(/[\\/]/).pop().replace(/\s+/g, "").toLowerCase();
+      const mapDetails = (details) => {
+        const map = new Map();
+        (details || []).forEach((detail) => {
+          const key = keyOf(detail.name);
+          if (key) map.set(key, detail);
+        });
+        return map;
+      };
+      const baselineDetails = mapDetails(row.baseline_image_details || []);
+      const currentDetails = mapDetails(row.current_image_details || []);
+      baselineDetails.forEach((base, key) => {
+        const curr = currentDetails.get(key);
+        if (!curr) return;
+        const baseDim = base.width && base.height ? `${base.width}x${base.height}` : "";
+        const currDim = curr.width && curr.height ? `${curr.width}x${curr.height}` : "";
+        if (baseDim && currDim && baseDim !== currDim) flags.dimensions = true;
+        if (base.size_bytes && curr.size_bytes && String(base.size_bytes) !== String(curr.size_bytes)) flags.size = true;
+        if (base.modified_at && curr.modified_at && String(base.modified_at) === String(curr.modified_at)) flags.time = true;
+      });
+      return flags;
+    }
+
+    function renderImageDiffChips(row) {
+      const flags = imageEvidenceFlags(row);
+      const chips = [];
+      if (flags.dimensions) chips.push(`<span class="diff-chip changed">尺寸</span>`);
+      if (flags.size) chips.push(`<span class="diff-chip changed">大小</span>`);
+      if (flags.time) chips.push(`<span class="diff-chip changed">时间</span>`);
+      if (flags.count) chips.push(`<span class="diff-chip changed">数量</span>`);
+      return chips.length ? chips.join("") : `<span class="diff-chip same">正常</span>`;
     }
 
     function recordStatusLabel(row) {
       if (row.match_status === "unmatched_new") return "新增";
       if (row.match_status === "unmatched_missing") return "缺失";
-      if (row.requires_review) return "待复核";
+      if (row.requires_review) return "变化";
       return "正常";
     }
 
@@ -2362,7 +2416,23 @@
         ${compareColumnFilterSummary()}
         ${renderDecisionBar(data, rows)}
         <div class="table-wrap">
-          <table>
+          <table class="compare-table">
+            <colgroup>
+              <col style="width:58px" />
+              <col style="width:50px" />
+              <col style="width:78px" />
+              <col style="width:76px" />
+              <col style="width:116px" />
+              <col style="width:92px" />
+              <col style="width:34px" />
+              <col style="width:34px" />
+              <col style="width:34px" />
+              <col style="width:118px" />
+              <col style="width:120px" />
+              <col style="width:82px" />
+              <col style="width:64px" />
+              <col style="width:104px" />
+            </colgroup>
             <thead>
               <tr>
                 ${renderCompareHeaderCell("status")}
@@ -2400,10 +2470,15 @@
                     rowNeedsDecision(row)
                       ? rowDecisionDone(row, decisions)
                         ? `<span class="decision-chip done">${esc(decisionLabel(decisions[String(row._compare_idx)]) || "已裁决")}</span>`
-                        : `<button class="decision-chip need" type="button" data-skip-decision="${esc(String(row._compare_idx))}" title="点击标为放弃裁决，提交时保留原基线">待裁决</button>`
+                        : `<span class="decision-chip need">待裁决</span>`
                       : `<span class="decision-chip done">无需</span>`
                   }</td>
-                  <td class="right"><a class="btn" href="${esc(compareDetailUrl(row, data, pos))}">详情</a></td>
+                  <td class="right">
+                    <span class="compare-actions">
+                      <a class="mini-action" href="${esc(compareDetailUrl(row, data, pos))}">详情</a>
+                      ${rowNeedsDecision(row) ? `<button class="mini-action skip" type="button" data-skip-decision="${esc(String(row._compare_idx))}" title="切换放弃裁决，提交时保留原基线">${rowDecisionDone(row, decisions) && (decisions[String(row._compare_idx)] || {}).action === "skip" ? "取消" : "放弃"}</button>` : ""}
+                    </span>
+                  </td>
                 </tr>
               `).join("") : `<tr><td colspan="14"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
             </tbody>
