@@ -502,6 +502,18 @@
       const fields = [["企业名称", b.company_name, c.company_name], ["经营状态", b.business_status, c.business_status], ["承担职务", b.role, c.role], ["持股比例", b.share_ratio, c.share_ratio]];
       return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead><tbody>${fields.map(([k, a, b]) => compareRow(k, a, b, "", { kind: "employment_field", key: `${pairIndex}:${k}` })).join("")}</tbody></table></div>`;
     }
+    function companyRecordText(r) {
+      if (!r) return "—";
+      const name = r.company_name || "未识别企业";
+      const sub = [r.business_status, r.role, r.share_ratio].filter(Boolean).join(" / ");
+      const source = r.source_image ? `\n来源：${r.source_image}` : "";
+      return `${name}${sub ? `\n${sub}` : ""}${source}`;
+    }
+    function companyRecordDecision(pair, pairIndex) {
+      const b = pair.baseline || {};
+      const c = pair.current || {};
+      return `<div class="company-fields"><table><thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead><tbody>${compareRow("企业记录", companyRecordText(pair.baseline), companyRecordText(pair.current), "", { kind: "employment_company", key: String(pairIndex), allowManual: false })}</tbody></table></div>`;
+    }
     function employmentSection() {
       if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") return oneSideEmployment();
       const pairs = alignEmployment();
@@ -512,11 +524,8 @@
             const [label, cls] = companyStatus(p);
             const b = p.baseline || {};
             const c = p.current || {};
-            const companyDecision = (!p.baseline || !p.current)
-              ? `<div style="margin:0 12px 12px;">${inlineDecisionControl("employment_company", String(pairIndex), false)}</div>`
-              : "";
-            const fieldCompare = (!p.baseline || !p.current) ? "" : companyFieldCompare(p, pairIndex);
-            return `<details class="company" ${cls !== "ok" ? "open" : ""}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name || "—")}<small>${esc(companySub(b))}</small><div class="source-line">${sourceBadge(p.baseline, "baseline")}</div></div><div class="arr">→</div><div class="company-name">${esc(c.company_name || "—")}<small>${esc(companySub(c))}</small><div class="source-line">${sourceBadge(p.current, "current")}</div></div></div><span class="diff-status ${cls}">${esc(label)}</span></summary>${fieldCompare}${companyDecision}</details>`;
+            const body = (!p.baseline || !p.current) ? companyRecordDecision(p, pairIndex) : companyFieldCompare(p, pairIndex);
+            return `<details class="company" ${cls !== "ok" ? "open" : ""}><summary class="company-head"><div class="company-pair"><div class="company-name">${esc(b.company_name || "—")}<small>${esc(companySub(b))}</small><div class="source-line">${sourceBadge(p.baseline, "baseline")}</div></div><div class="arr">→</div><div class="company-name">${esc(c.company_name || "—")}<small>${esc(companySub(c))}</small><div class="source-line">${sourceBadge(p.current, "current")}</div></div></div><span class="diff-status ${cls}">${esc(label)}</span></summary>${body}</details>`;
           }).join("")}</div>` : `<div class="empty">无任职企业明细。</div>`}
         </section>
       `;
