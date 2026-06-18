@@ -1467,6 +1467,119 @@
       }
     }
 
+    function renderCompareResult(data) {
+      lastCompareData = data;
+      const s = data.summary || {};
+      const rows = prepareCompareRows(data.records || []);
+      const decisions = readCompareDecisions(data);
+      const aggregateScopeRows = applyCompareColumnFilters(applyCompareDetailFilters(rows), decisions);
+      const detailRows = applyCompareDetailFilters(compareRowsByFilter(rows, compareFilter));
+      compareHeaderBaseRows = detailRows;
+      const filteredRows = sortCompareRows(applyCompareColumnFilters(detailRows, decisions), decisions);
+      const displayRows = filteredRows.slice(0, 800);
+      saveCompareState(data, filteredRows);
+      compareResult.innerHTML = `
+        ${renderCompareFilters(s, aggregateScopeRows)}
+        ${renderCompareDetailFilters()}
+        ${compareColumnFilterSummary()}
+        ${renderDecisionBar(data, rows)}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                ${renderCompareHeaderCell("status")}
+                ${renderCompareHeaderCell("severity")}
+                ${renderCompareHeaderCell("record_id")}
+                ${renderCompareHeaderCell("name")}
+                ${renderCompareHeaderCell("masked_id")}
+                ${renderCompareHeaderCell("capture")}
+                ${renderCompareHeaderCell("basic")}
+                ${renderCompareHeaderCell("employment")}
+                ${renderCompareHeaderCell("decision")}
+                <th class="right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${displayRows.length ? displayRows.map((row, pos) => `
+                <tr>
+                  <td><span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span></td>
+                  <td><span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span></td>
+                  <td class="mono">${esc(recordId(row))}</td>
+                  <td><strong>${esc(recordName(row))}</strong></td>
+                  <td>${esc(recordMaskedId(row))}</td>
+                  <td>${esc(recordCapture(row))}</td>
+                  <td><div class="diff-chips">${renderBasicDiffChips(row)}</div></td>
+                  <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
+                  <td>${
+                    rowNeedsDecision(row)
+                      ? `<span class="decision-chip ${decisions[String(row._compare_idx)] ? "done" : "need"}">${esc(decisionLabel(decisions[String(row._compare_idx)]) || "待裁决")}</span>`
+                      : `<span class="decision-chip done">无需</span>`
+                  }</td>
+                  <td class="right"><a class="btn" href="${esc(compareDetailUrl(row, data, pos))}">详情</a></td>
+                </tr>
+              `).join("") : `<tr><td colspan="10"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div class="compare-note">
+          当前展示：${esc(compareFilterLabel(s))}，筛选后 ${filteredRows.length} 条。
+          ${filteredRows.length > 800 ? "列表仅展示前 800 条。" : ""}
+          详情页只比较共识后的结构化结果，图片仅作为核验预览。
+        </div>
+      `;
+      bindCompareHeaderInteractions(decisions);
+      const submit = compareResult.querySelector("#submitBaselineUpdate");
+      submit && submit.addEventListener("click", () => submitBaselineUpdate(data));
+      compareResult.querySelectorAll("[data-compare-filter]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const next = btn.dataset.compareFilter || "review";
+          compareFilter = compareFilter === next ? "all" : next;
+          renderCompareResult(lastCompareData);
+        });
+      });
+      const search = compareResult.querySelector("#compareSearch");
+      search && search.addEventListener("input", () => {
+        compareDetailFilters.q = search.value || "";
+      });
+      search && search.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") renderCompareResult(lastCompareData);
+      });
+      const apply = compareResult.querySelector("#compareApplyFilters");
+      apply && apply.addEventListener("click", () => renderCompareResult(lastCompareData));
+      const business = compareResult.querySelector("#compareBusinessFilter");
+      business && business.addEventListener("change", () => {
+        compareDetailFilters.business = business.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const capture = compareResult.querySelector("#compareCaptureFilter");
+      capture && capture.addEventListener("change", () => {
+        compareDetailFilters.capture = capture.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const severity = compareResult.querySelector("#compareSeverityFilter");
+      severity && severity.addEventListener("change", () => {
+        compareDetailFilters.severity = severity.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const decision = compareResult.querySelector("#compareDecisionFilter");
+      decision && decision.addEventListener("change", () => {
+        compareDetailFilters.decision = decision.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const reviewOnly = compareResult.querySelector("#compareReviewOnly");
+      reviewOnly && reviewOnly.addEventListener("change", () => {
+        compareDetailFilters.reviewOnly = !!reviewOnly.checked;
+        renderCompareResult(lastCompareData);
+      });
+      const clear = compareResult.querySelector("#compareClearFilters");
+      clear && clear.addEventListener("click", () => {
+        compareDetailFilters = { q: "", business: "", capture: "", severity: "", decision: "", reviewOnly: false };
+        compareColumnFilters = {};
+        compareColumnSort = { key: "", direction: "asc" };
+        renderCompareResult(lastCompareData);
+      });
+    }
+
     async function startCompare() {
       const baselineId = compareBaseline.value;
       const taskId = compareTask.value;
