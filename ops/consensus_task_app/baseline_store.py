@@ -491,32 +491,35 @@ class BaselineStore:
                 )
             )
 
+        employment_by_current_record = self._current_employment_by_record_id(task_dir, records)
         employment_inserts = []
-        for idx, row in enumerate(employment_rows, start=1):
-            person_key = _to_text(row.get("人员键"))
-            if not person_key:
-                file_no = _to_text(row.get("文件编号"))
-                name = _to_text(row.get("姓名"))
-                person_key = f"{file_no}-{name}" if file_no and name else ""
-            baseline_record_id = record_ids_by_person_key.get(person_key)
-            company_name = _to_text(row.get("企业名称"))
-            row_status = self._employment_row_status(row)
-            employment_inserts.append(
-                (
-                    f"{baseline_id}_e{idx:06d}",
-                    baseline_id,
-                    baseline_record_id,
-                    idx,
-                    _normalize_company_key(company_name),
-                    company_name,
-                    _to_text(row.get("经营状态")),
-                    _to_text(row.get("承担职务")),
-                    _to_text(row.get("持股比例")),
-                    _to_text(row.get("来源文件") or row.get("文件名")),
-                    row_status,
-                    _json_dumps(row),
+        emp_idx = 0
+        for rec in records:
+            baseline_record_id = record_ids_by_person_key.get(
+                f"{_to_text(rec.get('file_id'))}-{_to_text(rec.get('person_name'))}"
+            ) or record_ids_by_person_key.get(_to_text(rec.get("record_key")))
+            if not baseline_record_id:
+                continue
+            for row in employment_by_current_record.get(_to_text(rec.get("id")), []):
+                emp_idx += 1
+                company_name = _to_text(row.get("company_name"))
+                row_status = _to_text(row.get("row_status"))
+                employment_inserts.append(
+                    (
+                        f"{baseline_id}_e{emp_idx:06d}",
+                        baseline_id,
+                        baseline_record_id,
+                        emp_idx,
+                        _to_text(row.get("company_key")) or _normalize_company_key(company_name),
+                        company_name,
+                        _to_text(row.get("business_status")),
+                        _to_text(row.get("role")),
+                        _to_text(row.get("share_ratio")),
+                        _to_text(row.get("source_image")),
+                        row_status,
+                        _json_dumps(row),
+                    )
                 )
-            )
 
         with self.connect() as conn:
             if baseline_type == "golden":
@@ -679,7 +682,7 @@ class BaselineStore:
                     _json_dumps(evidence),
                 )
             )
-            for employment in employment_rows:
+            for employment in self._dedupe_employment_rows(employment_rows):
                 emp_idx = len(employment_inserts) + 1
                 company_name = _to_text(employment.get("company_name")) or "未识别企业"
                 emp_evidence = dict(employment.get("evidence_summary") or {})
@@ -1181,7 +1184,7 @@ class BaselineStore:
             normalized = self._normalize_employment_row(row, idx)
             for record_id in target_ids:
                 grouped.setdefault(record_id, []).append(normalized)
-        return grouped
+        return {record_id: self._dedupe_employment_rows(items) for record_id, items in grouped.items()}
 
     def _current_employment_by_record_id(
         self,
@@ -1242,7 +1245,44 @@ class BaselineStore:
             normalized = self._normalize_employment_row(row, idx)
             for record_id in target_ids:
                 grouped.setdefault(record_id, []).append(normalized)
-        return grouped
+        return {record_id: self._dedupe_employment_rows(items) for record_id, items in grouped.items()}
+
+    def _dedupe_employment_rows(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        by_key: Dict[str, Dict[str, Any]] = {}
+
+        def merge_sources(left: Any, right: Any) -> str:
+            values: List[str] = []
+            for value in [left, right]:
+                for item in re.split(r"[|,，;；]+", _to_text(value)):
+                    name = Path(unquote(_to_text(item))).name
+                    if name and name not in values:
+                        values.append(name)
+            return "|".join(values)
+
+        def row_key(row: Dict[str, Any]) -> str:
+            company_key = _to_text(row.get("company_key")) or _normalize_company_key(row.get("company_name"))
+            return "|||".join(
+                [
+                    company_key,
+                    self._normalize_employment_value("经营状态", row.get("business_status")),
+                    self._normalize_employment_value("承担职务", row.get("role")),
+                    self._normalize_employment_value("持股比例", row.get("share_ratio")),
+                ]
+            )
+
+        for row in rows or []:
+            key = row_key(row)
+            if key not in by_key:
+                copied = dict(row)
+                by_key[key] = copied
+                merged.append(copied)
+                continue
+            target = by_key[key]
+            target["source_image"] = merge_sources(target.get("source_image"), row.get("source_image"))
+            if not _to_text(target.get("row_status")) and _to_text(row.get("row_status")):
+                target["row_status"] = row.get("row_status")
+        return merged
 
     def _normalize_employment_row(self, row: Dict[str, Any], idx: int) -> Dict[str, Any]:
         evidence = row.get("evidence_summary") if isinstance(row.get("evidence_summary"), dict) else {}

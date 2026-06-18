@@ -103,7 +103,7 @@
     .decision-choice { position: relative; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease; }
     .decision-choice.active { border-color: var(--primary); background: var(--primary-soft); box-shadow: inset 0 0 0 2px rgba(127,157,140,.28); }
     .decision-choice.active::after { content: "已选"; position: absolute; right: 7px; top: 6px; color: var(--primary-strong); font-size: 10px; font-weight: 900; }
-    .field-decision-tools { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+    .field-decision-tools { display: inline-flex; gap: 5px; align-items: center; margin-left: 6px; vertical-align: middle; }
     .decision-mini { border: 1px solid #D8DED4; background: #fff; color: var(--muted); border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 900; cursor: pointer; }
     .decision-mini.active { border-color: #BFD8CA; background: var(--primary-soft); color: var(--primary-strong); }
     .value-box { border: 1px solid var(--line-soft); border-radius: 10px; padding: 7px 8px; background: var(--paper); overflow-wrap: anywhere; min-height: 34px; font-weight: 760; }
@@ -146,7 +146,7 @@
     .section-actions { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .section-actions button { border: 1px solid #D8DED4; background: #FFFFFF; color: var(--muted); border-radius: 999px; padding: 5px 9px; font-size: 11px; font-weight: 900; cursor: pointer; }
     .section-actions button:hover { color: var(--primary-strong); border-color: #BFD8CA; background: var(--primary-soft); }
-    .decision-control { display: grid; gap: 6px; min-width: 142px; }
+    .decision-control { min-width: 0; }
     .decision-buttons { display: flex; gap: 5px; flex-wrap: nowrap; }
     .decision-btn { border: 1px solid #D8DED4; background: #FFFFFF; color: var(--muted); border-radius: 999px; padding: 5px 8px; font-size: 11px; font-weight: 900; line-height: 1; cursor: pointer; }
     .decision-btn.active { color: var(--primary-strong); background: var(--primary-soft); border-color: #BFD8CA; }
@@ -331,12 +331,16 @@
     }
     function fieldDecisionCell(name, decisionMeta, selected) {
       if (!decisionMeta || decisionMeta.allowManual === false) return esc(name);
+      return esc(name);
+    }
+    function statusDecisionCell(statusHtml, decisionMeta, selected) {
+      if (!decisionMeta || decisionMeta.allowManual === false) return statusHtml;
       const saved = currentDecision(decisionMeta.kind, decisionMeta.key);
       return `
-        <div>${esc(name)}</div>
         <div class="field-decision-tools">
-          <button type="button" class="decision-mini ${selected === "manual" ? "active" : ""}" data-decision-action="manual">手工</button>
-          <input class="decision-input" data-decision-manual="${esc(decisionMeta.kind)}:${esc(decisionMeta.key)}" value="${esc(saved.value || "")}" placeholder="手工值" style="display:${selected === "manual" ? "block" : "none"};" />
+          ${statusHtml}
+          <button type="button" class="decision-mini ${selected === "manual" ? "active" : ""}" data-decision-action="manual" title="手工修正">✎</button>
+          <input class="decision-input" data-decision-manual="${esc(decisionMeta.kind)}:${esc(decisionMeta.key)}" value="${esc(saved.value || "")}" placeholder="手工值" style="display:${selected === "manual" ? "inline-block" : "none"}; width:120px;" />
         </div>
       `;
     }
@@ -384,7 +388,7 @@
           <td>${fieldDecisionCell(name, needsDecision ? decisionMeta : null, selected)}</td>
           <td>${decisionValueCell(baselineValue, "base", !same && !capture, needsDecision ? decisionMeta : null, "keep_baseline", selected)}</td>
           <td>${decisionValueCell(currentValue, "curr", !same && !capture, needsDecision ? decisionMeta : null, "accept_current", selected)}</td>
-          <td>${statusPill(baselineValue, currentValue, kind)}</td>
+          <td>${statusDecisionCell(statusPill(baselineValue, currentValue, kind), needsDecision ? decisionMeta : null, selected)}</td>
         </tr>
       `;
     }
@@ -637,18 +641,7 @@
       const existing = readCompareDecisions()[String(idx)];
       const existingText = existing ? `当前已选择：${existing.action === "accept_current" ? "采用本次" : existing.action === "manual" ? "手工修正" : existing.action === "field_decisions" ? "已裁决" : "保留基线"}` : "当前尚未裁决。";
       if (row.match_status === "matched") {
-        return `
-          <section class="panel">
-            <h2>保存选择</h2>
-            <div class="decision-panel">
-              <div class="decision-status">${existing ? "当前记录已有已裁决，可直接在上方差异行继续修改。" : "只需要处理上方不一致的业务字段；一致字段会自动沿用基线。"}保存后返回比对列表，最后在列表页统一提交真实基线更新。</div>
-              <div class="decision-actions">
-                <button class="btn" type="button" data-save-field-decisions>保存裁决</button>
-              </div>
-              <div id="decisionStatus" class="decision-status">未保存。</div>
-            </div>
-          </section>
-        `;
+        return "";
       }
       const keepText = row.match_status === "unmatched_new" ? "忽略新增" : "保留基线";
       const acceptText = row.match_status === "unmatched_missing" ? "确认移除" : "接受全部进入基线";
@@ -696,11 +689,22 @@
       try {
         const payload = collectFieldDecisions();
         writeCompareDecision({ idx, action: "field_decisions", ...payload, decided_at: new Date().toISOString() });
-        status.textContent = "已裁决已保存，正在返回列表。";
+        if (status) status.textContent = "已裁决已保存，正在返回列表。";
         location.href = backHref();
       } catch (err) {
-        status.textContent = err.message || String(err);
+        if (status) status.textContent = err.message || String(err);
+        else alert(err.message || String(err));
       }
+    }
+    function mountTopDecisionActions() {
+      if (row.match_status !== "matched") return;
+      const actions = document.querySelector(".actions");
+      if (!actions || actions.querySelector("[data-save-field-decisions]")) return;
+      const existing = readCompareDecisions()[String(idx)];
+      actions.insertAdjacentHTML("beforeend", `
+        <button class="btn" type="button" data-save-field-decisions>保存裁决</button>
+        <span id="decisionStatus" class="decision-status">${existing ? "已保存，可修改后重新保存。" : "未保存"}</span>
+      `);
     }
     function selectDecisionControl(control, action) {
       if (!control || !action) return;
@@ -781,6 +785,7 @@
         imageZoomed[side] = !imageZoomed[side];
         img.classList.toggle("zoomed", imageZoomed[side]);
       });
+      mountTopDecisionActions();
       document.querySelectorAll("[data-baseline-decision]").forEach(btn => btn.onclick = () => applyBaselineDecision(btn.dataset.baselineDecision));
       document.querySelectorAll("[data-decision-action]").forEach(btn => btn.onclick = () => selectDecisionControl(btn.closest(".decision-control"), btn.dataset.decisionAction));
       document.querySelectorAll("[data-save-field-decisions]").forEach(btn => btn.onclick = saveFieldDecisions);
