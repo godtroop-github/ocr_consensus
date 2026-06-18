@@ -689,12 +689,29 @@
       try {
         const payload = collectFieldDecisions();
         writeCompareDecision({ idx, action: "field_decisions", ...payload, decided_at: new Date().toISOString() });
-        if (status) status.textContent = "已裁决已保存，正在返回列表。";
-        location.href = backHref();
+        const nextHref = nextAfterSaveHref();
+        if (nextHref) {
+          if (status) status.textContent = "已保存，正在切换下一条。";
+          location.href = nextHref;
+        } else if (status) {
+          status.textContent = "已保存，当前已经是筛选结果中的最后一条。";
+        }
       } catch (err) {
         if (status) status.textContent = err.message || String(err);
         else alert(err.message || String(err));
       }
+    }
+    function nextAfterSaveHref() {
+      const indexes = Array.isArray(filteredIndexes) ? filteredIndexes : [];
+      let currentPos = Number.isFinite(pos) && pos >= 0 ? pos : indexes.indexOf(idx);
+      if (currentPos < 0) currentPos = indexes.indexOf(idx);
+      const nextPos = currentPos + 1;
+      const nextIdx = indexes[nextPos];
+      if (nextIdx === undefined || nextIdx === null) return "";
+      const params = new URLSearchParams(location.search);
+      params.set("idx", String(nextIdx));
+      params.set("pos", String(nextPos));
+      return `/static/baseline_compare_detail.html?${params.toString()}`;
     }
     function mountTopDecisionActions() {
       if (row.match_status !== "matched") return;
