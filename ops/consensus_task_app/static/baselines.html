@@ -838,7 +838,7 @@
     let baselines = [];
     let tasks = [];
     let lastCompareData = null;
-    let compareFilter = "review";
+    let compareFilter = "decision_pending";
     let compareDetailFilters = { q: "" };
     let compareColumnFilters = {};
     let compareColumnSort = { key: "", direction: "asc" };
@@ -1405,7 +1405,7 @@
       if (state.task_id && tasks.some((t) => String(t.id) === String(state.task_id))) {
         compareTask.value = state.task_id;
       }
-      compareFilter = state.compareFilter || "review";
+      compareFilter = state.compareFilter || "decision_pending";
       compareDetailFilters = { q: (state.compareDetailFilters && state.compareDetailFilters.q) || "" };
       compareColumnFilters = {};
       for (const [key, values] of Object.entries(state.compareColumnFilters || {})) {
@@ -2501,7 +2501,7 @@
       });
       compareResult.querySelectorAll("[data-compare-filter]").forEach((btn) => {
         btn.addEventListener("click", () => {
-          const next = btn.dataset.compareFilter || "review";
+        const next = btn.dataset.compareFilter || "decision_pending";
           compareFilter = compareFilter === next ? "all" : next;
           renderCompareResult(lastCompareData);
         });
@@ -2583,7 +2583,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || "比对失败");
-        compareFilter = "review";
+        compareFilter = "decision_pending";
         compareDetailFilters = { q: "" };
         compareColumnFilters = {};
         compareColumnSort = { key: "", direction: "asc" };
