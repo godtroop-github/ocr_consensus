@@ -130,6 +130,9 @@
     .company-fields table { border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; background: #fff; }
     .image-panel { min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,253,248,.94); overflow: hidden; box-shadow: var(--shadow); }
     .image-panel h2 { margin: 0; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); background: rgba(243,240,232,.50); font-size: 13px; font-weight: 720; overflow-wrap: anywhere; }
+    .image-meta { display: grid; gap: 3px; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); background: rgba(255,253,248,.82); color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .image-meta div { overflow-wrap: anywhere; }
+    .image-meta strong { color: var(--text); font-weight: 760; }
     .image-frame { flex: 1; min-height: 320px; display: grid; place-items: start center; background: #F2EFE7; overflow: auto; }
     .image-frame img { width: 100%; height: 100%; object-fit: contain; object-position: center top; cursor: zoom-in; }
     .image-frame img.zoomed { width: auto; height: auto; max-width: 100%; max-height: none; cursor: zoom-out; }
@@ -291,6 +294,31 @@
       const r = rec(side);
       return [...new Set([...(row[`${side}_images`] || []), r.file_name].filter(Boolean))];
     }
+    function imageDetailsForName(side, file) {
+      const details = Array.isArray(row[`${side}_image_details`]) ? row[`${side}_image_details`] : [];
+      const target = String(file || "");
+      return details.find((item) => String(item.name || "") === target) || {};
+    }
+    function fmtBytes(value) {
+      const n = Number(value || 0);
+      if (!n) return "大小未知";
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      return `${(n / 1024 / 1024).toFixed(2)} MB`;
+    }
+    function imageMeta(side, file) {
+      const info = imageDetailsForName(side, file);
+      const sourceTask = side === "baseline" ? (compareData.baseline && compareData.baseline.source_task_id) : (compareData.task && compareData.task.id);
+      const path = info.path || (sourceTask && file ? `/runs/${sourceTask}/dashboard/images/${file}` : "");
+      const size = info.width && info.height ? `${info.width} × ${info.height}` : "尺寸未知";
+      return `
+        <div class="image-meta">
+          <div><strong>路径</strong>：${esc(path || "—")}</div>
+          <div><strong>尺寸</strong>：${esc(size)}　<strong>大小</strong>：${esc(fmtBytes(info.size_bytes))}</div>
+          <div><strong>修改时间</strong>：${esc(info.modified_at || "—")}</div>
+        </div>
+      `;
+    }
     function imageUrl(side, file) {
       const sourceTask = side === "baseline" ? (compareData.baseline && compareData.baseline.source_task_id) : (compareData.task && compareData.task.id);
       return sourceTask && file ? `/runs/${encodeURIComponent(sourceTask)}/dashboard/images/${encodeURIComponent(file)}` : "";
@@ -305,6 +333,7 @@
       return `
         <section class="image-panel">
           <h2>${esc(label)}${file ? ` · ${esc(file)}` : ""}</h2>
+          ${file ? imageMeta(side, file) : ""}
           <div class="image-frame">
             ${src ? `<img class="${zoomClass}" src="${esc(src)}" alt="${esc(label)}" data-zoom-side="${esc(side)}" />` : `<div class="empty">图片不可用</div>`}
           </div>
@@ -420,9 +449,10 @@
       const b = rec("baseline");
       const c = rec("current");
       const fields = [["姓名", b.person_name, c.person_name, ""], ["身份证号", b.masked_id, c.masked_id, ""], ["截图时间", recordCapture(b), recordCapture(c), "capture"], ["企/任/参", countsText(b), countsText(c), ""]];
+      const hasActions = fields.some(([, a, b, kind]) => kind !== "capture" && String(a || "") !== String(b || ""));
       return `
         <section class="panel">
-          <h2 class="with-actions"><span>基础信息</span><span class="section-actions"><button type="button" data-fill-scope="basic" data-fill-field-decisions="keep_baseline">全保留</button><button type="button" data-fill-scope="basic" data-fill-field-decisions="accept_current">全采用</button></span></h2>
+          <h2 class="with-actions"><span>基础信息</span>${hasActions ? `<span class="section-actions"><button type="button" data-fill-scope="basic" data-fill-field-decisions="keep_baseline">全保留</button><button type="button" data-fill-scope="basic" data-fill-field-decisions="accept_current">全采用</button></span>` : ""}</h2>
           <table>
             <thead><tr><th>字段</th><th>基线</th><th>本次</th><th>核验</th></tr></thead>
             <tbody>${fields.map(([k, a, b, kind]) => compareRow(k, a, b, kind, { kind: "basic", key: k })).join("")}</tbody>
@@ -478,6 +508,9 @@
       return [
         `任务：${taskName(side)}`,
         `来源图片：${r.source_image || "—"}`,
+        `完整路径：${imageDetailsForName(side, r.source_image).path || "—"}`,
+        `图片尺寸：${imageDetailsForName(side, r.source_image).width && imageDetailsForName(side, r.source_image).height ? `${imageDetailsForName(side, r.source_image).width}×${imageDetailsForName(side, r.source_image).height}` : "—"}`,
+        `修改时间：${imageDetailsForName(side, r.source_image).modified_at || "—"}`,
         `共识企业：${r.company_name || "未识别企业"}`,
         `经营状态：${r.business_status || "—"}`,
         `承担职务：${r.role || "—"}`,
@@ -525,9 +558,10 @@
     function employmentSection() {
       if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") return oneSideEmployment();
       const pairs = alignEmployment();
+      const hasActions = pairs.some((pair) => companyStatus(pair)[1] !== "ok");
       return `
         <section class="panel employment-panel">
-          <h2 class="with-actions"><span>任职明细</span><span class="section-actions"><button type="button" data-fill-scope="employment" data-fill-field-decisions="keep_baseline">全保留</button><button type="button" data-fill-scope="employment" data-fill-field-decisions="accept_current">全采用</button></span></h2>
+          <h2 class="with-actions"><span>任职明细</span>${hasActions ? `<span class="section-actions"><button type="button" data-fill-scope="employment" data-fill-field-decisions="keep_baseline">全保留</button><button type="button" data-fill-scope="employment" data-fill-field-decisions="accept_current">全采用</button></span>` : ""}</h2>
           ${pairs.length ? `<div class="company-list">${pairs.map((p, pairIndex) => {
             const [label, cls] = companyStatus(p);
             const b = p.baseline || {};
@@ -657,9 +691,7 @@
       const currentDisabled = row.match_status === "unmatched_missing" ? "" : "";
       const existing = readCompareDecisions()[String(idx)];
       const existingText = existing ? `当前已选择：${existing.action === "accept_current" ? "采用本次" : existing.action === "manual" ? "手工修正" : existing.action === "field_decisions" ? "已裁决" : "保留基线"}` : "当前尚未裁决。";
-      if (row.match_status === "matched") {
-        return "";
-      }
+      return "";
       const keepText = row.match_status === "unmatched_new" ? "忽略新增" : "保留基线";
       const acceptText = row.match_status === "unmatched_missing" ? "确认移除" : "接受全部进入基线";
       return `
@@ -733,8 +765,25 @@
       params.set("pos", String(nextPos));
       return `/static/baseline_compare_detail.html?${params.toString()}`;
     }
+    function hasDecisionControls() {
+      return !!document.querySelector(".decision-control[data-decision-kind]");
+    }
+    function hasCompanyCleanupControls() {
+      return !!document.querySelector("[data-company-remove]");
+    }
+    function hasActiveCompanyCleanup() {
+      return !!document.querySelector("[data-company-remove].active");
+    }
+    function refreshTopDecisionActionState() {
+      const save = document.querySelector("[data-save-field-decisions]");
+      if (!save) return;
+      save.disabled = !hasDecisionControls() && !hasActiveCompanyCleanup();
+      const status = $("decisionStatus");
+      if (status && save.disabled) status.textContent = "无待裁决字段；如需清理任职明细，先点击对应企业的删除。";
+    }
     function mountTopDecisionActions() {
       if (row.match_status !== "matched") return;
+      if (!hasDecisionControls() && !hasCompanyCleanupControls()) return;
       const actions = document.querySelector(".actions");
       if (!actions || actions.querySelector("[data-save-field-decisions]")) return;
       const existing = readCompareDecisions()[String(idx)];
@@ -742,6 +791,7 @@
         <button class="btn" type="button" data-save-field-decisions>保存裁决</button>
         <span id="decisionStatus" class="decision-status">${existing ? "已保存，可修改后重新保存。" : "未保存"}</span>
       `);
+      refreshTopDecisionActionState();
     }
     function selectDecisionControl(control, action) {
       if (!control || !action) return;
@@ -757,6 +807,7 @@
       btn.classList.toggle("active");
       const status = $("decisionStatus");
       if (status) status.textContent = btn.classList.contains("active") ? "已标记删除该任职明细，确认后请保存裁决。" : "已取消删除标记。";
+      refreshTopDecisionActionState();
     }
     function fillFieldDecisions(action, scope = "") {
       document.querySelectorAll(".decision-control[data-decision-kind]").forEach((control) => {

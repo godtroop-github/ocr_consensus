@@ -21,6 +21,7 @@ EMPLOYMENT_FIELD_KEYS = {
     "承担职务": "role",
     "持股比例": "share_ratio",
 }
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 class BaselineError(ValueError):
@@ -349,6 +350,9 @@ class BaselineStore:
             baseline.get("employment_rows") or [],
             baseline_records,
         )
+        baseline_task_dir = self.runs_root / _to_text(baseline.get("source_task_id"))
+        baseline_image_index = self._image_info_index(baseline_task_dir)
+        current_image_index = self._image_info_index(task_dir)
         same_source_task = _to_text(task.get("id")) and _to_text(task.get("id")) == _to_text(baseline.get("source_task_id"))
         if same_source_task:
             diff_records = [
@@ -358,6 +362,8 @@ class BaselineStore:
                     "matched",
                     baseline_employment_by_record.get(_to_text(baseline_record.get("id")), []),
                     baseline_employment_by_record.get(_to_text(baseline_record.get("id")), []),
+                    baseline_image_index,
+                    baseline_image_index,
                 )
                 for baseline_record in baseline_records
             ]
@@ -410,11 +416,17 @@ class BaselineStore:
                         "matched",
                         baseline_employment_by_record.get(_to_text(matched.get("id")), []),
                         current_employment_by_record.get(_to_text(current.get("id")), []),
+                        baseline_image_index,
+                        current_image_index,
                     )
                 )
             else:
                 diff_records.append(
-                    self._new_record_diff(current, current_employment_by_record.get(_to_text(current.get("id")), []))
+                    self._new_record_diff(
+                        current,
+                        current_employment_by_record.get(_to_text(current.get("id")), []),
+                        current_image_index,
+                    )
                 )
 
         for baseline_record in baseline_records:
@@ -424,6 +436,7 @@ class BaselineStore:
                 self._missing_record_diff(
                     baseline_record,
                     baseline_employment_by_record.get(_to_text(baseline_record.get("id")), []),
+                    baseline_image_index,
                 )
             )
 
@@ -1471,6 +1484,8 @@ class BaselineStore:
         match_status: str,
         baseline_employment: Optional[List[Dict[str, Any]]] = None,
         current_employment: Optional[List[Dict[str, Any]]] = None,
+        baseline_image_index: Optional[Dict[str, Dict[str, Any]]] = None,
+        current_image_index: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         baseline_values = self._business_field_values(baseline)
         current_values = self._business_field_values(current)
@@ -1529,12 +1544,15 @@ class BaselineStore:
             "current_employment": [self._public_employment_row(row) for row in current_employment or []],
             "baseline_images": baseline_images,
             "current_images": current_images,
+            "baseline_image_details": self._image_details(baseline_images, baseline_image_index or {}),
+            "current_image_details": self._image_details(current_images, current_image_index or {}),
         }
 
     def _new_record_diff(
         self,
         current: Dict[str, Any],
         current_employment: Optional[List[Dict[str, Any]]] = None,
+        current_image_index: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         current_images = self._record_images(current, current_employment or [])
         return {
@@ -1556,12 +1574,15 @@ class BaselineStore:
             "current_employment": [self._public_employment_row(row) for row in current_employment or []],
             "baseline_images": [],
             "current_images": current_images,
+            "baseline_image_details": [],
+            "current_image_details": self._image_details(current_images, current_image_index or {}),
         }
 
     def _missing_record_diff(
         self,
         baseline: Dict[str, Any],
         baseline_employment: Optional[List[Dict[str, Any]]] = None,
+        baseline_image_index: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         baseline_images = self._record_images(baseline, baseline_employment or [])
         return {
@@ -1583,6 +1604,8 @@ class BaselineStore:
             "current_employment": [],
             "baseline_images": baseline_images,
             "current_images": [],
+            "baseline_image_details": self._image_details(baseline_images, baseline_image_index or {}),
+            "current_image_details": [],
         }
 
     def _capture_time_diff_status(self, baseline: Dict[str, Any], current: Dict[str, Any]) -> str:
@@ -1850,6 +1873,52 @@ class BaselineStore:
             "source_image": row.get("source_image"),
             "row_status": row.get("row_status"),
         }
+
+    def _image_info_index(self, task_dir: Path) -> Dict[str, Dict[str, Any]]:
+        index: Dict[str, Dict[str, Any]] = {}
+        if not task_dir or not task_dir.exists():
+            return index
+        for path in task_dir.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in IMAGE_SUFFIXES:
+                continue
+            key = self._image_key(path.name)
+            if not key or key in index:
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            width: Any = ""
+            height: Any = ""
+            try:
+                from PIL import Image
+
+                with Image.open(path) as image:
+                    width, height = image.size
+            except Exception:
+                pass
+            index[key] = {
+                "name": path.name,
+                "path": str(path),
+                "size_bytes": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                "width": width,
+                "height": height,
+            }
+        return index
+
+    def _image_details(self, images: Iterable[Any], image_index: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+        details: List[Dict[str, Any]] = []
+        for image in images:
+            name = Path(unquote(_to_text(image))).name
+            key = self._image_key(name)
+            info = dict(image_index.get(key) or {})
+            if not info:
+                info = {"name": name, "path": "", "size_bytes": "", "modified_at": "", "width": "", "height": ""}
+            elif not info.get("name"):
+                info["name"] = name
+            details.append(info)
+        return details
 
     def _record_images(self, record: Dict[str, Any], employment_rows: List[Dict[str, Any]]) -> List[str]:
         images: List[str] = []
