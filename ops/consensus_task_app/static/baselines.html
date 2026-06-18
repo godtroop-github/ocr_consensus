@@ -76,11 +76,11 @@
     .compact-baselines .table-wrap { max-height: 260px; overflow: auto; }
     .baseline-row { cursor: pointer; }
     .baseline-row.selected td {
-      background: linear-gradient(90deg, rgba(127,157,140,.14), rgba(255,253,248,.82));
-      box-shadow: inset 0 1px 0 rgba(127,157,140,.22), inset 0 -1px 0 rgba(127,157,140,.18);
+      background: rgba(231,240,234,.42);
+      box-shadow: inset 0 1px 0 rgba(127,157,140,.12), inset 0 -1px 0 rgba(127,157,140,.10);
     }
     .baseline-row.selected td:first-child {
-      box-shadow: inset 4px 0 0 var(--green-strong), inset 0 1px 0 rgba(127,157,140,.22), inset 0 -1px 0 rgba(127,157,140,.18);
+      box-shadow: inset 2px 0 0 rgba(127,157,140,.45), inset 0 1px 0 rgba(127,157,140,.12), inset 0 -1px 0 rgba(127,157,140,.10);
     }
     .baseline-row.selected .title { color: var(--green-strong); }
     .baseline-actions { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
@@ -1131,9 +1131,26 @@
 
     function captureReviewStatus(row) {
       if (!row || row.match_status !== "matched") return "none";
-      if (row.capture_time_diff_status === "same") return "suspicious";
+      const baselineSource = String((lastCompareData && lastCompareData.baseline && lastCompareData.baseline.source_task_id) || "");
+      const taskId = String((lastCompareData && lastCompareData.task && lastCompareData.task.id) || "");
+      const sameSourceTask = baselineSource && taskId && baselineSource === taskId;
+      if (row.capture_time_diff_status === "same") return sameSourceTask ? "ok" : "suspicious";
       if (["older", "invalid", "missing_current"].includes(row.capture_time_diff_status)) return "warning";
       return "ok";
+    }
+
+    function recordCountValue(row, key) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      const value = current[key] ?? baseline[key] ?? "";
+      const m = String(value || "").match(/-?\d+/);
+      return m ? m[0] : (value || "0");
+    }
+
+    function hasEmploymentInfo(row) {
+      return Number(recordCountValue(row, "employment_count") || 0) > 0
+        || (row.baseline_employment || []).length > 0
+        || (row.current_employment || []).length > 0;
     }
 
     function recordName(row) {
@@ -1248,6 +1265,7 @@
       }
       if (key === "business") return rows.filter((r) => r.business_diff_status === "changed");
       if (key === "employment") return rows.filter((r) => (r.employment_diffs || []).length);
+      if (key === "has_employment") return rows.filter((r) => hasEmploymentInfo(r));
       if (key === "new") return rows.filter((r) => r.business_diff_status === "new");
       if (key === "missing") return rows.filter((r) => r.business_diff_status === "missing");
       if (key === "older") return rows.filter((r) => captureReviewStatus(r) === "suspicious");
@@ -1443,7 +1461,7 @@
     function rowDecisionResolvedCount(row, decision) {
       const required = rowDecisionRequiredCount(row);
       if (!required || !decision) return 0;
-      if (["keep_baseline", "accept_current", "manual", "remove"].includes(decision.action || "")) return required;
+      if (["keep_baseline", "accept_current", "manual", "remove", "skip"].includes(decision.action || "")) return required;
       if (decision.action !== "field_decisions") return 0;
       const basic = decision.basic && typeof decision.basic === "object" ? Object.keys(decision.basic).length : 0;
       const employment = decision.employment && typeof decision.employment === "object" ? Object.keys(decision.employment).length : 0;
@@ -1458,7 +1476,7 @@
 
     function decisionLabel(decision) {
       const action = decision && decision.action;
-      const map = { keep_baseline: "保留", accept_current: "采用", manual: "修正", remove: "移除", field_decisions: "已裁决" };
+      const map = { keep_baseline: "保留", accept_current: "采用", manual: "修正", remove: "移除", field_decisions: "已裁决", skip: "放弃" };
       return map[action] || "";
     }
 
@@ -1476,7 +1494,7 @@
         : pendingRows > 0
           ? `<span class="decision-chip need">待裁决 ${pendingRows} 条</span><span class="decision-chip">已裁决 ${doneRows.length}/${decisionRows.length}</span>`
           : `<span class="decision-chip done">已完成 ${doneRows.length}/${decisionRows.length}</span>`;
-      const buttonText = decisionRows.length === 0 ? "无需更新" : "提交基线更新";
+      const buttonText = decisionRows.length === 0 ? "无需更新" : doneRows.length > 0 && pendingRows > 0 ? "提交已裁决" : "提交基线更新";
       const buttonTitle = decisionRows.length === 0
         ? "本次比对没有需要裁决的业务差异，不生成新的真实基线版本。"
         : pendingRows > 0
@@ -1513,6 +1531,7 @@
         ["decision_done", "已裁决", doneDecisionCount],
         ["business", "业务变化", rows.filter((r) => r.business_diff_status === "changed").length],
         ["employment", "任职变化", rows.filter((r) => (r.employment_diffs || []).length).length],
+        ["has_employment", "有任职", rows.filter((r) => hasEmploymentInfo(r)).length],
         ["new", "新增", rows.filter((r) => r.business_diff_status === "new").length],
         ["missing", "缺失", rows.filter((r) => r.business_diff_status === "missing").length],
         ["older", "截图疑点", rows.filter((r) => captureReviewStatus(r) === "suspicious").length],
@@ -1680,6 +1699,9 @@
       { key: "name", label: "姓名" },
       { key: "masked_id", label: "身份证号" },
       { key: "capture", label: "截图时间" },
+      { key: "related_count", label: "企" },
+      { key: "employment_count", label: "任" },
+      { key: "shareholding_count", label: "参" },
       { key: "basic", label: "基础差异" },
       { key: "employment", label: "任职差异" },
       { key: "image", label: "图片证据" },
@@ -1697,6 +1719,9 @@
       if (key === "name") return recordName(row);
       if (key === "masked_id") return recordMaskedId(row);
       if (key === "capture") return recordCapture(row);
+      if (key === "related_count") return recordCountValue(row, "related_count");
+      if (key === "employment_count") return recordCountValue(row, "employment_count");
+      if (key === "shareholding_count") return recordCountValue(row, "shareholding_count");
       if (key === "basic") return (row.field_diffs || []).length ? renderBasicDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "基础信息无变化";
       if (key === "employment") return (row.employment_diffs || []).length ? renderEmploymentSummaryChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "任职明细无变化";
       if (key === "image") return (row.image_diffs || []).length ? renderImageDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "图片证据无变化";
@@ -2232,6 +2257,25 @@
       return `/static/baseline_compare_detail.html?${params.toString()}`;
     }
 
+    function skipCompareDecision(data, row) {
+      const decisions = readCompareDecisions(data);
+      const idx = String(row._compare_idx);
+      const current = decisions[idx] || {};
+      if (current.action === "skip") {
+        delete decisions[idx];
+      } else {
+        decisions[idx] = {
+          idx: Number(row._compare_idx),
+          record_key: row.record_key || "",
+          action: "skip",
+          reason: "放弃本轮裁决，保留原基线",
+          decided_at: new Date().toISOString(),
+        };
+      }
+      writeCompareDecisions(data, decisions);
+      renderCompareResult(data);
+    }
+
     async function submitBaselineUpdate(data) {
       const rows = prepareCompareRows(data.records || []);
       const decisions = readCompareDecisions(data);
@@ -2246,10 +2290,11 @@
         alert("本次比对没有需要人工裁决的业务差异，无需生成新的业务基线版本。");
         return;
       }
-      if (pendingRows > 0) {
-        alert(`还有 ${pendingRows} 条记录未裁决，请先进入详情页处理。`);
+      if (!doneRows.length) {
+        alert("当前没有已裁决记录可提交。可以进入详情页裁决，也可以在列表页点击“待裁决”将该条标为放弃裁决。");
         return;
       }
+      if (pendingRows > 0 && !window.confirm(`还有 ${pendingRows} 条记录未裁决。本次只提交 ${doneRows.length} 条已裁决记录，其余记录保留原基线，继续吗？`)) return;
       const defaultName = `${(data.baseline && (data.baseline.name || data.baseline.id)) || "真实基线"} / 裁决更新`;
       const nextName = window.prompt("确认提交全部裁决并生成新的 active golden 基线。请输入新基线名称：", defaultName);
       if (nextName === null) return;
@@ -2258,7 +2303,7 @@
         alert("新基线名称不能为空。");
         return;
       }
-      const payloadDecisions = decisionRows.map((row) => ({
+      const payloadDecisions = doneRows.map((row) => ({
         ...(decisions[String(row._compare_idx)] || {}),
         idx: Number(row._compare_idx),
         record_key: row.record_key || "",
@@ -2326,6 +2371,9 @@
                 ${renderCompareHeaderCell("name")}
                 ${renderCompareHeaderCell("masked_id")}
                 ${renderCompareHeaderCell("capture")}
+                ${renderCompareHeaderCell("related_count")}
+                ${renderCompareHeaderCell("employment_count")}
+                ${renderCompareHeaderCell("shareholding_count")}
                 ${renderCompareHeaderCell("basic")}
                 ${renderCompareHeaderCell("employment")}
                 ${renderCompareHeaderCell("image")}
@@ -2342,17 +2390,22 @@
                   <td><strong>${esc(recordName(row))}</strong></td>
                   <td>${esc(recordMaskedId(row))}</td>
                   <td>${esc(recordCapture(row))}</td>
+                  <td class="mono">${esc(recordCountValue(row, "related_count"))}</td>
+                  <td class="mono">${esc(recordCountValue(row, "employment_count"))}</td>
+                  <td class="mono">${esc(recordCountValue(row, "shareholding_count"))}</td>
                   <td><div class="diff-chips">${renderBasicDiffChips(row)}</div></td>
                   <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
                   <td><div class="diff-chips">${renderImageDiffChips(row)}</div></td>
                   <td>${
                     rowNeedsDecision(row)
-                      ? `<span class="decision-chip ${rowDecisionDone(row, decisions) ? "done" : "need"}">${esc(rowDecisionDone(row, decisions) ? (decisionLabel(decisions[String(row._compare_idx)]) || "已裁决") : "待裁决")}</span>`
+                      ? rowDecisionDone(row, decisions)
+                        ? `<span class="decision-chip done">${esc(decisionLabel(decisions[String(row._compare_idx)]) || "已裁决")}</span>`
+                        : `<button class="decision-chip need" type="button" data-skip-decision="${esc(String(row._compare_idx))}" title="点击标为放弃裁决，提交时保留原基线">待裁决</button>`
                       : `<span class="decision-chip done">无需</span>`
                   }</td>
                   <td class="right"><a class="btn" href="${esc(compareDetailUrl(row, data, pos))}">详情</a></td>
                 </tr>
-              `).join("") : `<tr><td colspan="11"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
+              `).join("") : `<tr><td colspan="14"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
             </tbody>
           </table>
         </div>
@@ -2365,6 +2418,12 @@
       bindCompareHeaderInteractions(decisions);
       const submit = compareResult.querySelector("#submitBaselineUpdate");
       submit && submit.addEventListener("click", () => submitBaselineUpdate(data));
+      compareResult.querySelectorAll("[data-skip-decision]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const target = rows.find((row) => String(row._compare_idx) === String(btn.dataset.skipDecision));
+          if (target) skipCompareDecision(data, target);
+        });
+      });
       compareResult.querySelectorAll("[data-compare-filter]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const next = btn.dataset.compareFilter || "review";
