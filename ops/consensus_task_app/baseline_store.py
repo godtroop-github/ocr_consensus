@@ -296,11 +296,11 @@ class BaselineStore:
         task_dir = Path(_to_text(task.get("output_dir")) or self.runs_root / _to_text(task.get("id")))
         if not task_dir.exists():
             raise BaselineError("task output directory not found")
-        current_records = self._compare_records_from_task(task_dir)
+        current_records = self._merge_person_records(self._compare_records_from_task(task_dir))
         if not current_records:
             raise BaselineError("task has no structured records to compare")
 
-        baseline_records = list(baseline.get("records") or [])
+        baseline_records = self._merge_person_records(list(baseline.get("records") or []))
         baseline_employment_by_record = self._employment_by_record_id(
             baseline.get("employment_rows") or [],
             baseline_records,
@@ -326,7 +326,7 @@ class BaselineStore:
                     "source_task_id": baseline.get("source_task_id"),
                     "source_task_name": baseline.get("source_task_name"),
                     "created_at": baseline.get("created_at"),
-                    "record_count": baseline.get("record_count"),
+                    "record_count": len(baseline_records),
                     "image_count": baseline.get("image_count"),
                 },
                 "task": {
@@ -427,7 +427,8 @@ class BaselineStore:
         if not task_dir.exists():
             raise BaselineError("task output directory not found")
 
-        records = self._load_task_records(task_dir)
+        raw_records = self._load_task_records(task_dir)
+        records = self._merge_person_records(self._compare_records_from_task(task_dir))
         if not records:
             raise BaselineError("task has no structured records to save")
 
@@ -445,8 +446,10 @@ class BaselineStore:
             },
             "image_count": int(task.get("files_total") or len(task.get("input_files") or [])),
             "record_count": len(records),
+            "raw_record_count": len(raw_records),
             "strategy": "4ocr_weighted_consensus+harness",
             "review_state_count": len(review_state or {}),
+            "person_multi_image_merge": True,
         }
 
         record_ids_by_person_key: Dict[str, str] = {}
@@ -972,6 +975,155 @@ class BaselineStore:
             }
             rows.append(row)
         return rows
+
+    def _person_merge_key(self, row: Dict[str, Any]) -> str:
+        file_id = _to_text(row.get("file_id"))
+        person_name = _to_text(row.get("person_name"))
+        masked_id = _to_text(row.get("masked_id"))
+        record_key = _to_text(row.get("record_key"))
+        if file_id and person_name:
+            return f"file_name:{file_id}|||{person_name}"
+        if masked_id and person_name:
+            return f"id_name:{masked_id}|||{person_name}"
+        if record_key:
+            return f"record:{record_key}"
+        return f"single:{_to_text(row.get('id')) or _to_text(row.get('file_name'))}"
+
+    def _merge_person_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        order: List[str] = []
+        for row in records or []:
+            key = self._person_merge_key(row)
+            if key not in groups:
+                groups[key] = []
+                order.append(key)
+            groups[key].append(row)
+        return [self._merge_person_record_group(groups[key]) for key in order]
+
+    def _merge_person_record_group(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not records:
+            return {}
+        if len(records) == 1:
+            merged = dict(records[0])
+            merged.setdefault("merged_record_count", 1)
+            merged.setdefault("merged_file_names", self._record_images(merged, []))
+            return merged
+
+        def first_text(key: str) -> str:
+            for row in records:
+                value = _to_text(row.get(key))
+                if value:
+                    return value
+            return ""
+
+        def best_text(key: str) -> str:
+            values = [_to_text(row.get(key)) for row in records if _to_text(row.get(key))]
+            if not values:
+                return ""
+            counts: Dict[str, int] = {}
+            for value in values:
+                counts[value] = counts.get(value, 0) + 1
+            return sorted(values, key=lambda value: (-counts[value], -len(value), values.index(value)))[0]
+
+        def max_count(key: str) -> str:
+            values = [_normalize_count(row.get(key)) for row in records if _normalize_count(row.get(key)) != ""]
+            if not values:
+                return ""
+            numeric = []
+            for value in values:
+                try:
+                    numeric.append(int(value))
+                except Exception:
+                    pass
+            if numeric:
+                return str(max(numeric))
+            return values[0]
+
+        def add_unique(items: List[str], value: Any) -> None:
+            for item in re.split(r"[|,，;；]+", _to_text(value)):
+                name = Path(unquote(_to_text(item))).name
+                if name and name not in items:
+                    items.append(name)
+
+        images: List[str] = []
+        for row in records:
+            add_unique(images, row.get("file_name"))
+            merged_files = row.get("merged_file_names")
+            if isinstance(merged_files, list):
+                for item in merged_files:
+                    add_unique(images, item)
+
+        latest = None
+        for row in records:
+            capture = _capture_tuple(row.get("capture_date"), row.get("capture_time"))
+            if capture and (latest is None or capture > latest[0]):
+                latest = (capture, row)
+        capture_row = latest[1] if latest else next((row for row in records if _to_text(row.get("capture_date") or row.get("capture_time"))), records[0])
+
+        review_values = [_to_text(row.get("review_status")) for row in records]
+        non_empty_review_values = [value for value in review_values if value]
+        if "failed" in non_empty_review_values:
+            review_status = "failed"
+        elif non_empty_review_values and all(value == "passed" for value in non_empty_review_values):
+            review_status = "passed"
+        elif "passed" in non_empty_review_values:
+            review_status = "passed"
+        else:
+            review_status = next((value for value in non_empty_review_values if value), "unreviewed")
+
+        fields: Dict[str, Any] = {}
+        for row in records:
+            row_fields = row.get("fields") if isinstance(row.get("fields"), dict) else {}
+            for key, value in row_fields.items():
+                if _to_text(value) and not _to_text(fields.get(key)):
+                    fields[key] = value
+
+        fields.update(
+            {
+                "姓名": best_text("person_name"),
+                "身份证号": best_text("masked_id"),
+                "截图日期": _to_text(capture_row.get("capture_date")),
+                "截图时间": _to_text(capture_row.get("capture_time")),
+                "相关企业": max_count("related_count"),
+                "任职": max_count("employment_count"),
+                "参股": max_count("shareholding_count"),
+            }
+        )
+
+        evidence = {
+            "merged_record_count": len(records),
+            "merged_file_names": images,
+            "merged_record_keys": [_to_text(row.get("record_key")) for row in records if _to_text(row.get("record_key"))],
+            "sources": [row.get("evidence_summary") for row in records if isinstance(row.get("evidence_summary"), dict)],
+        }
+
+        merged = dict(records[0])
+        file_id = first_text("file_id")
+        person_name = best_text("person_name")
+        masked_id = best_text("masked_id")
+        filename = "|".join(images)
+        merged.update(
+            {
+                "record_key": _record_key(file_id, person_name, masked_id, filename),
+                "file_id": file_id,
+                "file_name": filename,
+                "file_name_from_filename": best_text("file_name_from_filename"),
+                "person_name": person_name,
+                "masked_id": masked_id,
+                "capture_date": _to_text(capture_row.get("capture_date")),
+                "capture_time": _to_text(capture_row.get("capture_time")),
+                "capture_datetime": " ".join(x for x in [_to_text(capture_row.get("capture_date")), _to_text(capture_row.get("capture_time"))] if x),
+                "related_count": max_count("related_count"),
+                "employment_count": max_count("employment_count"),
+                "shareholding_count": max_count("shareholding_count"),
+                "review_status": review_status or "unreviewed",
+                "fields": fields,
+                "evidence_summary": evidence,
+                "merged_record_count": len(records),
+                "merged_file_names": images,
+            }
+        )
+        return merged
 
     def _employment_by_record_id(
         self,
@@ -1793,6 +1945,8 @@ class BaselineStore:
         return "|".join(names)
 
     def _consensus_fields(self, rec: Dict[str, Any]) -> Dict[str, Any]:
+        if isinstance(rec.get("fields"), dict):
+            return dict(rec["fields"])
         consensus = rec.get("weighted_consensus")
         if isinstance(consensus, dict) and isinstance(consensus.get("fields"), dict):
             return dict(consensus["fields"])
@@ -1803,6 +1957,8 @@ class BaselineStore:
         return fields
 
     def _record_evidence(self, rec: Dict[str, Any]) -> Dict[str, Any]:
+        if isinstance(rec.get("evidence_summary"), dict):
+            return dict(rec["evidence_summary"])
         consensus = rec.get("weighted_consensus") if isinstance(rec.get("weighted_consensus"), dict) else {}
         methods = rec.get("methods") if isinstance(rec.get("methods"), dict) else {}
         method_summary: Dict[str, Any] = {}
