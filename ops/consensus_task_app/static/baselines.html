@@ -1320,13 +1320,35 @@
       });
     }
 
+    function businessDecisionGroups(row) {
+      const groups = {};
+      for (const diff of visibleBusinessDiffs(row)) {
+        const name = String(diff.field_name || diff.field || "");
+        const key = String(diff.field_key || diff.key || diff.field || "");
+        const raw = `${name}:${key}`;
+        if (["姓名", "person_name"].includes(name) || key === "person_name") {
+          groups["姓名"] = true;
+        } else if (["身份证号", "masked_id", "id_card"].includes(name) || ["masked_id", "id_card"].includes(key)) {
+          groups["身份证号"] = true;
+        } else if (
+          ["相关企业", "任职", "参股", "related_count", "employment_count", "shareholding_count", "企/任/参"].includes(name)
+          || ["related_count", "employment_count", "shareholding_count"].includes(key)
+        ) {
+          groups["企/任/参"] = true;
+        } else {
+          groups[name || key || raw || "其他"] = true;
+        }
+      }
+      return Object.keys(groups);
+    }
+
     function businessDecisionRequiredCount(row) {
       if (["new", "missing"].includes(row.business_diff_status)) return 0;
-      return visibleBusinessDiffs(row).length;
+      return businessDecisionGroups(row).length;
     }
 
     function employmentDecisionRequiredCount(row) {
-      return (row.employment_diffs || []).length;
+      return employmentDecisionGroups(row).length;
     }
 
     function rowNeedsDecision(row) {
@@ -1361,6 +1383,11 @@
       const employment = decision.employment && typeof decision.employment === "object" ? Object.keys(decision.employment).length : 0;
       const employmentCompanies = decision.employment_companies && typeof decision.employment_companies === "object" ? Object.keys(decision.employment_companies).length : 0;
       return Math.min(required, basic + employment + employmentCompanies);
+    }
+
+    function rowDecisionDone(row, decisions) {
+      const required = rowDecisionRequiredCount(row);
+      return required > 0 && rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
     }
 
     function decisionLabel(decision) {
@@ -1565,7 +1592,7 @@
         if (compareDetailFilters.decision) {
           const decisions = lastCompareData ? readCompareDecisions(lastCompareData) : {};
           const needs = rowNeedsDecision(row);
-          const done = !!decisions[String(row._compare_idx)];
+          const done = rowDecisionDone(row, decisions);
           if (compareDetailFilters.decision === "pending" && (!needs || done)) return false;
           if (compareDetailFilters.decision === "done" && (!needs || !done)) return false;
           if (compareDetailFilters.decision === "none" && needs) return false;
@@ -1614,7 +1641,8 @@
       if (key === "employment") return (row.employment_diffs || []).length ? renderEmploymentSummaryChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "任职明细无变化";
       if (key === "decision") {
         if (!rowNeedsDecision(row)) return "无需裁决";
-        return decisionLabel(decisions[String(row._compare_idx)]) || "待裁决";
+        const decision = decisions[String(row._compare_idx)];
+        return rowDecisionDone(row, decisions) ? (decisionLabel(decision) || "已裁决") : "待裁决";
       }
       return "—";
     }
@@ -2228,7 +2256,7 @@
                   <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
                   <td>${
                     rowNeedsDecision(row)
-                      ? `<span class="decision-chip ${decisions[String(row._compare_idx)] ? "done" : "need"}">${esc(decisionLabel(decisions[String(row._compare_idx)]) || "待裁决")}</span>`
+                      ? `<span class="decision-chip ${rowDecisionDone(row, decisions) ? "done" : "need"}">${esc(rowDecisionDone(row, decisions) ? (decisionLabel(decisions[String(row._compare_idx)]) || "已裁决") : "待裁决")}</span>`
                       : `<span class="decision-chip done">无需</span>`
                   }</td>
                   <td class="right"><a class="btn" href="${esc(compareDetailUrl(row, data, pos))}">详情</a></td>
