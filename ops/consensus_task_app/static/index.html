@@ -90,6 +90,29 @@
       white-space: nowrap;
     }
 
+    .top-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .nav-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--panel);
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
     .card {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -813,7 +836,10 @@
         <h1>OCR 共识处理台</h1>
         <p class="sub">专注每一次识别，让数据更准确。上传影像文件后，系统会依次完成四路 OCR、规则增强、字段共识和审阅页生成。</p>
       </div>
-      <div class="chip">安静审阅 · 4OCR 共识 · Harness 增强</div>
+      <div class="top-actions">
+        <a class="nav-link" href="/baselines">基线管理</a>
+        <div class="chip">安静审阅 · 4OCR 共识 · Harness 增强</div>
+      </div>
     </div>
 
     <section class="card">
@@ -863,6 +889,7 @@
       paddleocr_3_x: "PaddleOCR 3.x",
     };
     const ENGINE_ORDER = ["paddleocr_2_7_3", "rapidocr_2_7_3", "rapidocr_isolated", "paddleocr_3_x"];
+    let currentTasks = [];
 
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1187,7 +1214,8 @@
     async function refresh() {
       const res = await fetch("/api/tasks");
       const data = await res.json();
-      render(data.tasks || [], data.queue_size || 0);
+      currentTasks = data.tasks || [];
+      render(currentTasks, data.queue_size || 0);
     }
 
     submit.addEventListener("click", (e) => {

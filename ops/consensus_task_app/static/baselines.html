@@ -1,0 +1,2638 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OCR 基线管理</title>
+  <style>
+    @font-face {
+      font-family: "OCRSansSC";
+      src: url("/assets/fonts/SourceHanSansSC-Regular.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    :root {
+      --bg: #F8F6F0;
+      --panel: #FFFDF8;
+      --line: #E6E0D4;
+      --line-soft: #EEE8DC;
+      --text: #2F2A24;
+      --muted: #7B746A;
+      --green: #7F9D8C;
+      --green-strong: #5E7668;
+      --green-soft: #E7F0EA;
+      --blue: #637D93;
+      --blue-soft: #E8EEF4;
+      --amber: #9A7A3F;
+      --amber-soft: #F5EDD9;
+      --red: #B46458;
+      --red-soft: #F8E7E3;
+      --shadow: 0 10px 32px rgba(62, 54, 43, .055);
+      --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Hiragino Sans GB", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(221, 235, 226, .75), transparent 240px),
+        radial-gradient(circle at 88% 4%, rgba(216, 185, 154, .22), transparent 260px),
+        linear-gradient(180deg, rgba(255,253,248,.88), rgba(248,246,240,.96)),
+        var(--bg);
+      font-family: var(--font-ui);
+      font-variant-numeric: tabular-nums;
+    }
+    .wrap { width: min(1480px, calc(100vw - 48px)); margin: 0 auto; padding: 32px 0 48px; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 3vw, 36px); font-weight: 500; letter-spacing: -.6px; }
+    .sub { margin: 0; max-width: 760px; color: var(--muted); line-height: 1.7; font-size: 14px; }
+    .navs { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .nav-link, .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--green-strong);
+      background: var(--panel);
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:hover, .nav-link:hover { background: var(--green-soft); }
+    .card {
+      background: rgba(255,253,248,.92);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .primary-compare { order: 1; }
+    .compact-baselines { order: 2; }
+    .compact-baselines .table-wrap { max-height: 260px; overflow: auto; }
+    .baseline-row { cursor: pointer; }
+    .baseline-row.selected td {
+      background: rgba(231,240,234,.42);
+      box-shadow: inset 0 1px 0 rgba(127,157,140,.12), inset 0 -1px 0 rgba(127,157,140,.10);
+    }
+    .baseline-row.selected td:first-child {
+      box-shadow: inset 2px 0 0 rgba(127,157,140,.45), inset 0 1px 0 rgba(127,157,140,.12), inset 0 -1px 0 rgba(127,157,140,.10);
+    }
+    .baseline-row.selected .title { color: var(--green-strong); }
+    .baseline-actions { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+    .baseline-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .icon-btn {
+      width: 30px;
+      height: 30px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #FFFDF8;
+      color: var(--green-strong);
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 5px 14px rgba(41, 34, 24, .06);
+    }
+    .icon-btn:hover { background: var(--green-soft); border-color: #BFD8CA; }
+    .icon-btn.danger { color: var(--red); }
+    .icon-btn.danger:hover { background: var(--red-soft); border-color: #EAC8C1; }
+    .card + .card { margin-top: 20px; }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(255,253,248,.72);
+    }
+    .card-head h2 { margin: 0; font-weight: 500; font-size: 18px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: var(--green-strong);
+      background: var(--green-soft);
+      border: 1px solid #CFE3D6;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .chip.snapshot { color: var(--blue); background: var(--blue-soft); border-color: #CFDAE4; }
+    .chip.golden { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
+    .chip.candidate { color: var(--green-strong); background: var(--green-soft); border-color: #CFE3D6; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: middle; }
+    th { color: var(--muted); background: rgba(243,240,232,.58); font-size: 12px; font-weight: 800; white-space: nowrap; }
+    tr:hover td { background: #F9F7F1; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); }
+    .name-cell { min-width: 260px; }
+    .title { font-weight: 800; color: var(--text); }
+    .muted { color: var(--muted); }
+    .empty { padding: 42px; text-align: center; color: var(--muted); }
+    .detail { padding: 22px; display: grid; gap: 18px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .metric {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+      padding: 13px 14px;
+      min-height: 78px;
+    }
+    .metric .k { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .metric .v { font-size: 20px; font-weight: 850; }
+    .section-title { margin: 4px 0 0; font-size: 15px; font-weight: 850; }
+    .scroll-box {
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+    }
+    .field-table td:first-child { color: var(--muted); width: 128px; }
+    .field-table td:last-child { font-weight: 750; }
+    .right { text-align: right; }
+    .compare-controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.4fr) auto auto;
+      gap: 10px;
+      align-items: end;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(255,253,248,.58);
+    }
+    .control { display: grid; gap: 6px; }
+    .control label { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--text);
+      padding: 9px 12px;
+      font: inherit;
+      outline: none;
+    }
+    .compare-result { padding: 18px 22px 22px; }
+    .compare-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .metric.accent { border-color: #CFE3D6; background: linear-gradient(180deg, #FFFFFF, #F4FAF6); }
+    .metric.warn { border-color: #E9D9B8; background: linear-gradient(180deg, #FFFFFF, #FFF7E6); }
+    .metric.bad { border-color: #EAC8C1; background: linear-gradient(180deg, #FFFFFF, #FFF1EE); }
+    .metric .hint { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .compare-viz {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.2fr) minmax(260px, .8fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .viz-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 18px;
+      background: #fff;
+      padding: 14px;
+    }
+    .viz-title { font-weight: 850; margin-bottom: 12px; }
+    .stack-bar {
+      display: flex;
+      height: 18px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #F0ECE3;
+      box-shadow: inset 0 0 0 1px rgba(230,224,212,.75);
+    }
+    .stack-seg { min-width: 0; }
+    .stack-seg.same { background: #9CB9A9; }
+    .stack-seg.changed { background: #D8B56D; }
+    .stack-seg.new { background: #C97C71; }
+    .stack-seg.missing { background: #B46458; }
+    .stack-seg.time { background: #8EA5B8; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+    .dot.same { background: #9CB9A9; }
+    .dot.changed { background: #D8B56D; }
+    .dot.new { background: #C97C71; }
+    .dot.missing { background: #B46458; }
+    .dot.time { background: #8EA5B8; }
+    .risk-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .risk-pill {
+      border: 1px solid var(--line-soft);
+      border-radius: 14px;
+      background: #FFFDF8;
+      padding: 9px 8px;
+      text-align: center;
+    }
+    .risk-pill strong { display: block; font-size: 18px; }
+    .risk-pill span { color: var(--muted); font-size: 11px; }
+
+    .compare-filter-summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+    .compare-filter-summary .chip { margin: 0; }
+    th.sort-filter-th { padding: 0; }
+    .th-wrap { display: inline-flex; align-items: center; gap: 4px; padding: 11px 12px; width: 100%; }
+    .th-sort { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 850; cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .sort-mark::after { content: ""; color: var(--green-strong); font-size: 10px; }
+    .sort-mark.asc::after { content: "▲"; }
+    .sort-mark.desc::after { content: "▼"; }
+    .th-filter { width: 22px; height: 22px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; position: relative; flex: 0 0 auto; }
+    .th-filter::before { content: "▾"; font-size: 11px; line-height: 1; }
+    .th-filter.active { border-color: #BFD8CA; background: var(--green-soft); color: var(--green-strong); }
+    .th-filter.active::after { content: attr(data-count); position: absolute; right: -5px; top: -6px; min-width: 14px; height: 14px; border-radius: 999px; background: var(--green-strong); color: #fff; font-size: 9px; display: grid; place-items: center; padding: 0 3px; }
+    .col-popover { position: fixed; z-index: 100; width: 290px; max-height: 430px; display: none; border: 1px solid #CFE3D6; border-radius: 16px; background: #FFFDF8; box-shadow: 0 18px 45px rgba(62,54,43,.18); overflow: hidden; }
+    .col-popover.open { display: block; }
+    .pop-head { padding: 10px; border-bottom: 1px solid var(--line-soft); display: grid; gap: 8px; }
+    .pop-title { font-size: 12px; font-weight: 900; color: var(--text); }
+    .pop-search { width: 100%; border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 7px 9px; font: inherit; font-size: 12px; }
+    .pop-actions { display: flex; gap: 6px; }
+    .pop-btn { border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted); padding: 5px 8px; font-size: 11px; font-weight: 850; cursor: pointer; }
+    .pop-options { max-height: 286px; overflow: auto; padding: 8px 10px; display: grid; gap: 4px; }
+    .pop-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12px; }
+    .pop-option label { min-width: 0; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+    .pop-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pop-count { color: var(--muted); font-size: 11px; }
+    .compare-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin: 0 0 12px;
+    }
+    .compare-filter-bar {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto;
+      gap: 9px;
+      align-items: center;
+      margin: 0 0 14px;
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 18px;
+      background: rgba(255,253,248,.82);
+    }
+    .compare-filter-bar input,
+    .compare-filter-bar select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--text);
+      padding: 8px 11px;
+      font: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+    .check-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .filter-pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--muted);
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .filter-pill.active {
+      color: var(--green-strong);
+      background: var(--green-soft);
+      border-color: #CFE3D6;
+    }
+    .diff-status {
+      display: inline-flex;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .diff-status.same { color: var(--green-strong); background: var(--green-soft); border-color: #CFE3D6; }
+    .diff-status.changed { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
+    .diff-status.new, .diff-status.missing, .diff-status.high, .diff-status.critical { color: var(--red); background: var(--red-soft); border-color: #EAC8C1; }
+    .diff-list { display: grid; gap: 4px; min-width: 180px; }
+    .diff-line { color: var(--text); }
+    .diff-line small { color: var(--muted); display: block; margin-top: 2px; }
+    .value-compare {
+      display: grid;
+      grid-template-columns: minmax(90px, 1fr) 18px minmax(90px, 1fr);
+      gap: 7px;
+      align-items: stretch;
+      min-width: 280px;
+    }
+    .value-box {
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      padding: 7px 8px;
+      background: #FFFDF8;
+      min-height: 44px;
+    }
+    .value-box.current { border-color: #CFE3D6; background: #F4FAF6; }
+    .value-box.baseline { border-color: #E9D9B8; background: #FFF8E9; }
+    .value-label { color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+    .value-text { color: var(--text); font-weight: 800; overflow-wrap: anywhere; }
+    .arrow { align-self: center; color: var(--muted); text-align: center; }
+    .record-main { display: grid; gap: 3px; min-width: 120px; }
+    .record-main strong { font-size: 14px; }
+    .record-main span { color: var(--muted); font-size: 12px; }
+    .compare-note { color: var(--muted); font-size: 12px; margin-top: 10px; line-height: 1.6; }
+    .decision-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 0 12px;
+      padding: 11px 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: rgba(255,253,248,.86);
+    }
+    .decision-bar strong { font-size: 13px; }
+    .decision-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line-soft);
+      background: #FFFDF8;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 820;
+      white-space: nowrap;
+    }
+    .decision-chip.done { color: var(--green-strong); background: var(--green-soft); border-color: #CFE3D6; }
+    .decision-chip.need { color: var(--red); background: var(--red-soft); border-color: #EAC8C1; }
+    .record-detail-row td {
+      padding-top: 0;
+      background: rgba(255,253,248,.50);
+    }
+    .record-detail {
+      border: 1px dashed var(--line-soft);
+      border-radius: 16px;
+      background: rgba(255,253,248,.82);
+      padding: 8px 10px;
+    }
+    .record-detail summary {
+      cursor: pointer;
+      color: var(--green-strong);
+      font-weight: 850;
+      font-size: 12px;
+    }
+    .record-pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .record-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .record-card h4 {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(243,240,232,.52);
+      font-size: 13px;
+    }
+    .record-fields {
+      display: grid;
+      grid-template-columns: 102px 1fr;
+      gap: 0;
+      font-size: 12px;
+    }
+    .record-fields .k,
+    .record-fields .v {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .record-fields .k {
+      color: var(--muted);
+      background: #FFFDF8;
+    }
+    .record-fields .v {
+      color: var(--text);
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+    .employment-diffs {
+      margin-top: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .employment-diffs h4 {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(243,240,232,.52);
+      font-size: 13px;
+    }
+    .employment-diffs table { font-size: 12px; }
+    .compare-workspace {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .diff-list-panel {
+      max-height: 340px;
+      overflow: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 14px;
+      background: rgba(255,253,248,.92);
+      padding: 10px;
+    }
+    .diff-list-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 6px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .diff-record-list {
+      display: grid;
+      gap: 6px;
+    }
+    .diff-card {
+      display: grid;
+      width: 100%;
+      grid-template-columns: minmax(230px, .8fr) minmax(220px, 1fr) minmax(220px, 1fr);
+      gap: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      background: #fff;
+      padding: 10px 12px;
+      text-align: left;
+      cursor: pointer;
+      color: var(--text);
+      box-shadow: none;
+    }
+    .diff-card:hover { border-color: #CFE3D6; background: #FBFFFC; }
+    .diff-card.is-selected {
+      border-color: #AFCDBB;
+      background: #EFF7F2;
+      box-shadow: inset 4px 0 0 var(--green-strong), 0 8px 24px rgba(62, 54, 43, .055);
+    }
+    .diff-card-top {
+      display: grid;
+      gap: 8px;
+    }
+    .diff-card-title strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 3px;
+    }
+    .diff-card-meta {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .diff-card-section {
+      display: grid;
+      gap: 5px;
+      align-content: start;
+    }
+    .diff-card-section .section-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .diff-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      min-width: 180px;
+    }
+    .diff-chip {
+      display: inline-flex;
+      align-items: center;
+      max-width: 96px;
+      padding: 4px 6px;
+      border-radius: 999px;
+      border: 1px solid var(--line-soft);
+      background: #FFFDF8;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .diff-chip.changed { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
+    .diff-chip.bad { color: var(--red); background: var(--red-soft); border-color: #EAC8C1; }
+    .diff-chip.same { color: var(--green-strong); background: var(--green-soft); border-color: #CFE3D6; }
+    .compare-table {
+      table-layout: fixed;
+      min-width: 1180px;
+    }
+    .compare-table th,
+    .compare-table td {
+      padding: 9px 8px;
+    }
+    .compare-table .diff-chips {
+      gap: 4px;
+      min-width: 0;
+    }
+    .compare-actions {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .mini-action {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #FFFDF8;
+      color: var(--muted);
+      padding: 5px 7px;
+      font-size: 11px;
+      font-weight: 850;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .mini-action:hover { background: var(--green-soft); color: var(--green-strong); border-color: #CFE3D6; }
+    .mini-action.skip { color: var(--amber); background: var(--amber-soft); border-color: #E9D9B8; }
+    .record-review-pane {
+      border: 1px solid var(--line-soft);
+      border-radius: 20px;
+      background: rgba(255,253,248,.95);
+      overflow: hidden;
+    }
+    .review-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(243,240,232,.55);
+    }
+    .review-head h3 { margin: 0 0 4px; font-size: 16px; font-weight: 850; }
+    .review-body {
+      display: grid;
+      gap: 14px;
+      padding: 14px;
+      max-height: 860px;
+      overflow: auto;
+    }
+    .image-pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .image-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+      min-height: 220px;
+    }
+    .image-card h4 {
+      margin: 0;
+      padding: 8px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      border-bottom: 1px solid var(--line-soft);
+      background: #FFFDF8;
+    }
+    .image-frame {
+      height: min(62vh, 680px);
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      background: #F2EFE7;
+      overflow: auto;
+    }
+    .image-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      cursor: zoom-in;
+    }
+    .image-frame img.zoomed {
+      width: 100%;
+      height: auto;
+      max-height: none;
+      cursor: zoom-out;
+    }
+    .batch-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-top: 1px solid var(--line-soft);
+      background: #FFFDF8;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--green-strong);
+      cursor: pointer;
+      font-weight: 900;
+    }
+    .icon-btn:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+    .compare-block {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .compare-block h4 {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(243,240,232,.45);
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .compare-cell {
+      display: grid;
+      grid-template-columns: minmax(64px, 1fr) 14px minmax(64px, 1fr);
+      gap: 5px;
+      align-items: center;
+      min-width: 156px;
+      font-size: 12px;
+    }
+    .compare-cell .b,
+    .compare-cell .c {
+      border: 1px solid var(--line-soft);
+      border-radius: 10px;
+      padding: 5px 6px;
+      overflow-wrap: anywhere;
+      background: #FFFDF8;
+    }
+    .compare-cell.changed .b { background: #FFF8E9; border-color: #E9D9B8; }
+    .compare-cell.changed .c { background: #FFF1EE; border-color: #EAC8C1; }
+    .compare-cell.same .b,
+    .compare-cell.same .c { background: #F4FAF6; border-color: #CFE3D6; }
+    .compare-cell .arr { color: var(--muted); text-align: center; }
+    .company-compare-list {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+    .company-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: #FFFDF8;
+      overflow: hidden;
+    }
+    .company-card[open] {
+      background: #fff;
+      border-color: #D9D0C1;
+    }
+    .company-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 12px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .company-summary::-webkit-details-marker { display: none; }
+    .company-pair {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+    .company-name {
+      overflow-wrap: anywhere;
+      font-weight: 850;
+    }
+    .company-name small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .company-fields {
+      padding: 0 12px 12px;
+    }
+    .company-fields table {
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+    }
+    @media (max-width: 900px) {
+      .wrap { width: min(100vw - 24px, 760px); }
+      .topbar { display: block; }
+      .navs { justify-content: flex-start; margin-top: 12px; }
+      table { min-width: 940px; }
+      .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .compare-controls { grid-template-columns: 1fr; }
+      .compare-viz { grid-template-columns: 1fr; }
+      .compare-filter-bar { grid-template-columns: 1fr; }
+      .record-pair { grid-template-columns: 1fr; }
+      .compare-workspace { grid-template-columns: 1fr; }
+      .record-review-pane { position: static; }
+      .image-pair { grid-template-columns: 1fr; }
+      .diff-card { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>OCR 基线管理</h1>
+        <p class="sub">保存任务结果为基线版本，查看基线快照的基础信息和任职明细；比对区用于按字段稽核当前任务与基线的差异。</p>
+      </div>
+      <div class="navs">
+        <a class="nav-link" href="/">返回处理台</a>
+        <button class="btn" type="button" onclick="refresh()">刷新</button>
+      </div>
+    </div>
+
+    <section class="card primary-compare">
+      <div class="card-head">
+        <h2>基线比对</h2>
+        <div class="muted">基础信息和任职明细逐字段比对，截图时间按弱差异处理</div>
+      </div>
+      <div class="compare-controls">
+        <div class="control">
+          <label for="compareBaseline">选择基线</label>
+          <select class="select" id="compareBaseline"></select>
+        </div>
+        <div class="control">
+          <label for="compareTask">选择已完成任务</label>
+          <select class="select" id="compareTask"></select>
+        </div>
+        <button class="btn" id="swapCompareBtn" type="button">互换</button>
+        <button class="btn" id="compareBtn" type="button">开始比对</button>
+      </div>
+      <div id="compareResult" class="compare-result">
+        <div class="empty">选择基线和任务后开始比对。</div>
+      </div>
+    </section>
+
+    <section class="card compact-baselines">
+      <div class="card-head">
+        <h2>真实基线版本</h2>
+        <div class="muted">保存后的基线会物理持久化在这里，可选为后续比对基准。</div>
+      </div>
+      <div id="list" class="table-wrap"><div class="empty">正在加载基线版本...</div></div>
+    </section>
+
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const stats = $("stats");
+    const list = $("list");
+    const compareBaseline = $("compareBaseline");
+    const compareTask = $("compareTask");
+    const compareBtn = $("compareBtn");
+    const swapCompareBtn = $("swapCompareBtn");
+    const compareResult = $("compareResult");
+    let baselines = [];
+    let tasks = [];
+    let lastCompareData = null;
+    let compareFilter = "decision_pending";
+    let compareDetailFilters = { q: "" };
+    let compareColumnFilters = {};
+    let compareColumnSort = { key: "", direction: "asc" };
+    let compareHeaderBaseRows = [];
+    let compareOpenFilterKey = "";
+    let compareSearchTimer = null;
+    let shouldFocusCompareSearch = false;
+    const COMPARE_STATE_KEY = "ocr_baseline_compare_state_v2";
+    const COMPARE_DECISIONS_KEY = "ocr_baseline_compare_decisions_v1";
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function fmtTime(s) {
+      return s ? String(s).replace("T", " ") : "—";
+    }
+
+    function typeLabel(type) {
+      const map = { snapshot: "快照", candidate: "候选", golden: "正式" };
+      return map[type] || type || "未知";
+    }
+
+    function fieldValue(fields, key) {
+      const value = fields && fields[key];
+      return value === undefined || value === null || value === "" ? "—" : value;
+    }
+
+    function renderStats() {
+      const counts = baselines.reduce((acc, item) => {
+        acc[item.type] = (acc[item.type] || 0) + 1;
+        return acc;
+      }, {});
+      stats.innerHTML = [
+        `总基线 ${baselines.length}`,
+        `快照 ${counts.snapshot || 0}`,
+        `候选 ${counts.candidate || 0}`,
+        `正式 ${counts.golden || 0}`,
+      ].map((x) => `<span class="chip">${x}</span>`).join("");
+    }
+
+    function renderList() {
+      if (!baselines.length) {
+        list.innerHTML = `<div class="empty">暂无基线。请先在处理台选择一个已完成任务并保存基线。</div>`;
+        return;
+      }
+      const selectedId = compareBaseline.value || new URL(location.href).searchParams.get("id") || "";
+      list.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>基线</th>
+              <th>类型</th>
+              <th>来源任务</th>
+              <th>记录</th>
+              <th>图片</th>
+              <th>创建时间</th>
+              <th class="right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${baselines.map((b) => `
+              <tr class="baseline-row ${b.id === selectedId ? "selected" : ""}" onclick="selectBaselineForCompare('${esc(b.id)}')">
+                <td class="name-cell">
+                  <div class="title">${esc(b.name)}</div>
+                  <div class="mono">${esc(b.id)}</div>
+                </td>
+                <td><span class="chip ${esc(b.type)}">${esc(typeLabel(b.type))}</span></td>
+                <td>
+                  <div>${esc(b.source_task_name || "—")}</div>
+                  <div class="mono">${esc(b.source_task_id || "")}</div>
+                </td>
+                <td>${Number(b.record_count || 0)}</td>
+                <td>${Number(b.image_count || 0)}</td>
+                <td class="mono">${esc(fmtTime(b.created_at))}</td>
+                <td class="right">
+                  <span class="baseline-actions">
+                    ${b.id === selectedId ? `<span class="chip">当前</span>` : ""}
+                    <button class="icon-btn" type="button" title="重命名" onclick="renameBaseline(event, '${esc(b.id)}')">✎</button>
+                    <button class="icon-btn danger" type="button" title="删除" onclick="deleteBaseline(event, '${esc(b.id)}')">×</button>
+                  </span>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderCompareControls() {
+      const selectedBaseline = compareBaseline.value || new URL(location.href).searchParams.get("id") || "";
+      compareBaseline.innerHTML = baselines.length
+        ? baselines.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} · ${esc(typeLabel(b.type))}</option>`).join("")
+        : `<option value="">暂无基线</option>`;
+      if (selectedBaseline && baselines.some((b) => b.id === selectedBaseline)) {
+        compareBaseline.value = selectedBaseline;
+      }
+
+      const completed = tasks.filter((t) => t.status === "completed");
+      compareTask.innerHTML = completed.length
+        ? completed.map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)} · ${Number(t.records_total || 0)} 条</option>`).join("")
+        : `<option value="">暂无已完成任务</option>`;
+      compareBtn.disabled = !baselines.length || !completed.length;
+      swapCompareBtn.disabled = !baselines.length || !completed.length;
+    }
+
+    async function renameBaseline(event, id) {
+      event.stopPropagation();
+      const item = baselines.find((b) => String(b.id) === String(id));
+      if (!item) return;
+      const name = window.prompt("输入新的基线名称：", item.name || "");
+      if (name === null) return;
+      const nextName = name.trim();
+      if (!nextName) {
+        alert("基线名称不能为空。");
+        return;
+      }
+      try {
+        const res = await fetch(`/api/baselines/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: nextName }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "重命名失败");
+        await refresh();
+      } catch (err) {
+        alert(err.message || String(err));
+      }
+    }
+
+    async function deleteBaseline(event, id) {
+      event.stopPropagation();
+      const item = baselines.find((b) => String(b.id) === String(id));
+      if (!item) return;
+      const label = `${item.name || id}\n${id}`;
+      if (!window.confirm(`确认删除这个基线版本？\n\n${label}\n\n该操作会删除该版本的基础信息和任职明细。`)) return;
+      try {
+        const res = await fetch(`/api/baselines/${encodeURIComponent(id)}`, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "删除失败");
+        const url = new URL(location.href);
+        if (url.searchParams.get("id") === id) {
+          url.searchParams.delete("id");
+          history.replaceState(null, "", url);
+        }
+        await refresh();
+      } catch (err) {
+        alert(err.message || String(err));
+      }
+    }
+
+    function selectBaselineForCompare(id) {
+      compareBaseline.value = id;
+      const url = new URL(location.href);
+      url.searchParams.set("id", id);
+      history.replaceState(null, "", url);
+      renderList();
+      document.querySelector(".compare-controls").scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    function baselineBySourceTask(taskId) {
+      return baselines.find((b) => String(b.source_task_id || "") === String(taskId || ""));
+    }
+
+    function selectedBaseline() {
+      return baselines.find((b) => String(b.id || "") === String(compareBaseline.value || ""));
+    }
+
+    function swapCompareSources() {
+      const currentBaseline = selectedBaseline();
+      const currentTaskId = compareTask.value;
+      if (!currentBaseline || !currentTaskId) {
+        alert("请先选择基线和被比较任务。");
+        return;
+      }
+      const nextBaseline = baselineBySourceTask(currentTaskId);
+      const nextTaskId = currentBaseline.source_task_id || "";
+      if (!nextBaseline) {
+        alert("当前被比较任务尚未保存为基线，无法互换。请先在该任务结果页保存基线。");
+        return;
+      }
+      if (!nextTaskId || !tasks.some((t) => String(t.id || "") === String(nextTaskId))) {
+        alert("当前基线缺少可用的来源任务，无法互换。");
+        return;
+      }
+      compareBaseline.value = nextBaseline.id;
+      compareTask.value = nextTaskId;
+      const url = new URL(location.href);
+      url.searchParams.set("id", nextBaseline.id);
+      history.replaceState(null, "", url);
+      startCompare();
+    }
+
+    function renderDetail(data) {
+      detailTitle.textContent = data.name || data.id || "基线详情";
+      const records = data.records || [];
+      const employmentRows = data.employment_rows || [];
+      const basicRows = records.slice(0, 200);
+      const employmentPreview = employmentRows.slice(0, 200);
+      detail.innerHTML = `
+        <div class="detail-grid">
+          <div class="metric"><div class="k">记录数</div><div class="v">${Number(data.record_count || records.length || 0)}</div></div>
+          <div class="metric"><div class="k">图片数</div><div class="v">${Number(data.image_count || 0)}</div></div>
+          <div class="metric"><div class="k">任职明细</div><div class="v">${Number(employmentRows.length || 0)}</div></div>
+          <div class="metric"><div class="k">类型</div><div class="v">${esc(typeLabel(data.type))}</div></div>
+        </div>
+        <div>
+          <div class="section-title">版本信息</div>
+          <div class="scroll-box" style="max-height:260px;">
+            <table class="field-table">
+              <tbody>
+                <tr><td>基线 ID</td><td class="mono">${esc(data.id)}</td></tr>
+                <tr><td>来源任务</td><td>${esc(data.source_task_name || "—")} <span class="mono">${esc(data.source_task_id || "")}</span></td></tr>
+                <tr><td>创建时间</td><td>${esc(fmtTime(data.created_at))}</td></tr>
+                <tr><td>规则版本</td><td>${esc(data.harness_version || "—")}</td></tr>
+                <tr><td>备注</td><td>${esc(data.notes || "—")}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div class="section-title">基础信息数据</div>
+          <div class="scroll-box">
+            ${basicRows.length ? `
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>编号</th>
+                    <th>姓名</th>
+                    <th>身份证号</th>
+                    <th>截图时间</th>
+                    <th>企 / 任 / 参</th>
+                    <th>复核</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${basicRows.map((r, idx) => {
+                    const capture = [r.capture_date, r.capture_time].filter(Boolean).join(" ") || "—";
+                    return `
+                      <tr>
+                        <td>${idx + 1}</td>
+                        <td class="mono">${esc(r.file_id || "—")}</td>
+                        <td><strong>${esc(r.person_name || "—")}</strong></td>
+                        <td>${esc(r.masked_id || "—")}</td>
+                        <td>${esc(capture)}</td>
+                        <td>${esc(r.related_count || "0")} / ${esc(r.employment_count || "0")} / ${esc(r.shareholding_count || "0")}</td>
+                        <td>${esc(r.review_status || "—")}</td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>
+            ` : `<div class="empty">暂无基础信息记录。</div>`}
+          </div>
+          ${records.length > basicRows.length ? `<div class="compare-note">仅预览前 ${basicRows.length} 条，完整数据通过基线比对和后续导出查看。</div>` : ""}
+        </div>
+        <div>
+          <div class="section-title">任职明细数据</div>
+          <div class="scroll-box">
+            ${employmentPreview.length ? `
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>企业名称</th>
+                    <th>经营状态</th>
+                    <th>承担职务</th>
+                    <th>持股比例</th>
+                    <th>来源图片</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${employmentPreview.map((row, idx) => `
+                    <tr>
+                      <td>${idx + 1}</td>
+                      <td><strong>${esc(row.company_name || "未识别企业")}</strong><div class="mono">${esc(row.company_key || "")}</div></td>
+                      <td>${esc(row.business_status || "—")}</td>
+                      <td>${esc(row.role || "—")}</td>
+                      <td>${esc(row.share_ratio || "—")}</td>
+                      <td class="mono">${esc(row.source_image || "—")}</td>
+                      <td>${esc(row.row_status || "—")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            ` : `<div class="empty">暂无任职明细行。</div>`}
+          </div>
+          ${employmentRows.length > employmentPreview.length ? `<div class="compare-note">仅预览前 ${employmentPreview.length} 条，完整数据通过基线比对和后续导出查看。</div>` : ""}
+        </div>
+      `;
+    }
+
+    function severityLabel(severity) {
+      const map = { info: "提示", low: "低", medium: "中", high: "高", critical: "极高" };
+      return map[severity] || severity || "—";
+    }
+
+    function bizLabel(status) {
+      const map = { same: "业务一致", changed: "业务变化", new: "新增", missing: "缺失" };
+      return map[status] || status || "—";
+    }
+
+    function captureLabel(status) {
+      const map = {
+        same: "截图时间疑点",
+        newer: "截图时间更新",
+        older: "疑似旧截图",
+        missing_current: "本次缺失时间",
+        filled: "本次补齐时间",
+        invalid: "时间异常",
+        changed: "截图时间变化",
+        missing: "截图时间缺失",
+      };
+      return map[status] || status || "—";
+    }
+
+    function captureReviewStatus(row) {
+      if (!row || row.match_status !== "matched") return "none";
+      const baselineSource = String((lastCompareData && lastCompareData.baseline && lastCompareData.baseline.source_task_id) || "");
+      const taskId = String((lastCompareData && lastCompareData.task && lastCompareData.task.id) || "");
+      const sameSourceTask = baselineSource && taskId && baselineSource === taskId;
+      if (row.capture_time_diff_status === "same") return sameSourceTask ? "ok" : "suspicious";
+      if (["older", "invalid", "missing_current"].includes(row.capture_time_diff_status)) return "warning";
+      return "ok";
+    }
+
+    function recordCountValue(row, key) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      const value = current[key] ?? baseline[key] ?? "";
+      const m = String(value || "").match(/-?\d+/);
+      return m ? m[0] : (value || "0");
+    }
+
+    function hasEmploymentInfo(row) {
+      return Number(recordCountValue(row, "employment_count") || 0) > 0
+        || (row.baseline_employment || []).length > 0
+        || (row.current_employment || []).length > 0;
+    }
+
+    function recordName(row) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      return current.person_name || baseline.person_name || "—";
+    }
+
+    function recordId(row) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      return current.file_id || baseline.file_id || "—";
+    }
+
+    function recordMaskedId(row) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      return current.masked_id || baseline.masked_id || "—";
+    }
+
+    function recordCapture(row) {
+      const current = row.current || {};
+      const baseline = row.baseline || {};
+      const value = [current.capture_date || baseline.capture_date, current.capture_time || baseline.capture_time].filter(Boolean).join(" ");
+      return value || "—";
+    }
+
+    function renderFieldDiffs(row) {
+      const diffs = row.field_diffs || [];
+      const employmentCount = (row.employment_diffs || []).length;
+      if (!diffs.length && !employmentCount) return `<span class="muted">${esc(captureLabel(row.capture_time_diff_status))}</span>`;
+      return `
+        <div class="diff-list">
+          ${diffs.map((d) => `
+            <div class="diff-line">
+              <strong>${esc(d.field_name)}</strong>
+              <div class="value-compare">
+                <div class="value-box baseline">
+                  <div class="value-label">基线</div>
+                  <div class="value-text">${esc(d.baseline_value || "—")}</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="value-box current">
+                  <div class="value-label">本次</div>
+                  <div class="value-text">${esc(d.current_value || "—")}</div>
+                </div>
+              </div>
+              <small>${esc(d.diff_type || "")}</small>
+            </div>
+          `).join("")}
+          ${employmentCount ? `<div class="diff-line"><strong>任职明细</strong><small>${employmentCount} 个字段差异</small></div>` : ""}
+        </div>
+      `;
+    }
+
+    function renderEmploymentDiffs(row) {
+      const diffs = row.employment_diffs || [];
+      if (!diffs.length) return "";
+      return `
+        <div class="employment-diffs">
+          <h4>任职明细逐字段差异</h4>
+          <table>
+            <thead>
+              <tr>
+                <th>企业</th>
+                <th>字段</th>
+                <th>基线值</th>
+                <th>本次值</th>
+                <th>类型</th>
+                <th>风险</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${diffs.map((d) => {
+                const b = d.baseline_row || {};
+                const c = d.current_row || {};
+                const company = c.company_name || b.company_name || "未识别企业";
+                return `
+                  <tr>
+                    <td><strong>${esc(company)}</strong><div class="mono">${esc(c.source_image || b.source_image || "")}</div></td>
+                    <td>${esc(d.field_name || "—")}</td>
+                    <td>${esc(d.baseline_value || "—")}</td>
+                    <td>${esc(d.current_value || "—")}</td>
+                    <td>${esc(d.diff_type || "—")}</td>
+                    <td><span class="diff-status ${esc(d.severity || "info")}">${esc(severityLabel(d.severity || "info"))}</span></td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function pct(part, total) {
+      if (!total) return 0;
+      return Math.max(0, Math.min(100, (Number(part || 0) / total) * 100));
+    }
+
+    function compareRowsByFilter(rows, key) {
+      const decisions = readCompareDecisions(lastCompareData);
+      if (key === "all") return rows;
+      if (key === "review") return rows.filter((r) => r.requires_review);
+      if (key === "decision_pending") {
+        return rows.filter((r) => rowDecisionRequiredCount(r) > rowDecisionResolvedCount(r, decisions[String(r._compare_idx)]));
+      }
+      if (key === "decision_done") {
+        return rows.filter((r) => {
+          const required = rowDecisionRequiredCount(r);
+          return required > 0 && rowDecisionResolvedCount(r, decisions[String(r._compare_idx)]) >= required;
+        });
+      }
+      if (key === "business") return rows.filter((r) => r.business_diff_status === "changed");
+      if (key === "employment") return rows.filter((r) => (r.employment_diffs || []).length);
+      if (key === "has_employment") return rows.filter((r) => hasEmploymentInfo(r));
+      if (key === "new") return rows.filter((r) => r.business_diff_status === "new");
+      if (key === "missing") return rows.filter((r) => r.business_diff_status === "missing");
+      if (key === "older") return rows.filter((r) => captureReviewStatus(r) === "suspicious");
+      if (key === "time") return rows.filter((r) => r.business_diff_status === "same" && r.capture_time_diff_status !== "same");
+      return rows;
+    }
+
+    function renderCompareFilters(s, scopeRows = null) {
+      const items = compareFilterItems(s, scopeRows);
+      return `
+        <div class="compare-filters">
+          ${items.map(([key, label, count]) => `
+            <button class="filter-pill ${compareFilter === key ? "active" : ""}" type="button" data-compare-filter="${esc(key)}">
+              ${esc(label)} ${Number(count || 0)}
+            </button>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function compareDataBaselineId(data) {
+      return String(compareBaseline.value || (data.baseline && data.baseline.id) || "");
+    }
+
+    function compareDataTaskId(data) {
+      return String(compareTask.value || (data.task && data.task.id) || "");
+    }
+
+    function compareStateMatches(state, baselineId, taskId) {
+      return !!(
+        state
+        && String(state.baseline_id || "") === String(baselineId || "")
+        && String(state.task_id || "") === String(taskId || "")
+        && state.compareData
+        && Array.isArray(state.compareData.records)
+      );
+    }
+
+    function saveCompareState(data, filteredRows) {
+      if (!data || !Array.isArray(data.records)) return;
+      const payload = {
+        baseline_id: compareDataBaselineId(data),
+        task_id: compareDataTaskId(data),
+        compareFilter,
+        compareDetailFilters: { ...compareDetailFilters },
+        compareColumnFilters: Object.fromEntries(Object.entries(compareColumnFilters).map(([k, v]) => [k, Array.from(v || [])])),
+        compareColumnSort: { ...compareColumnSort },
+        filteredIndexes: (filteredRows || []).map((row) => Number(row._compare_idx)).filter((n) => Number.isFinite(n)),
+        compareData: data,
+        savedAt: Date.now(),
+      };
+      try {
+        sessionStorage.setItem(COMPARE_STATE_KEY, JSON.stringify(payload));
+      } catch (err) {
+        console.warn("compare state save skipped", err);
+      }
+    }
+
+    function readCompareState() {
+      try {
+        return JSON.parse(sessionStorage.getItem(COMPARE_STATE_KEY) || "null");
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function compareDecisionScope(data = lastCompareData) {
+      return `${compareDataBaselineId(data || {})}::${compareDataTaskId(data || {})}`;
+    }
+
+    function readCompareDecisions(data = lastCompareData) {
+      try {
+        const all = JSON.parse(sessionStorage.getItem(COMPARE_DECISIONS_KEY) || "{}");
+        return all[compareDecisionScope(data)] || {};
+      } catch (err) {
+        return {};
+      }
+    }
+
+    function writeCompareDecisions(data, decisions) {
+      try {
+        const all = JSON.parse(sessionStorage.getItem(COMPARE_DECISIONS_KEY) || "{}");
+        all[compareDecisionScope(data)] = decisions || {};
+        sessionStorage.setItem(COMPARE_DECISIONS_KEY, JSON.stringify(all));
+      } catch (err) {
+        console.warn("compare decisions save skipped", err);
+      }
+    }
+
+    function clearCompareDecisions(data = lastCompareData) {
+      try {
+        const all = JSON.parse(sessionStorage.getItem(COMPARE_DECISIONS_KEY) || "{}");
+        delete all[compareDecisionScope(data)];
+        sessionStorage.setItem(COMPARE_DECISIONS_KEY, JSON.stringify(all));
+      } catch (err) {
+        console.warn("compare decisions clear skipped", err);
+      }
+    }
+
+    function restoreCompareStateIfNeeded() {
+      const url = new URL(location.href);
+      if (url.searchParams.get("restore") !== "1") return false;
+      const state = readCompareState();
+      if (!compareStateMatches(state, state?.baseline_id, state?.task_id)) return false;
+      if (state.baseline_id && baselines.some((b) => String(b.id) === String(state.baseline_id))) {
+        compareBaseline.value = state.baseline_id;
+      }
+      if (state.task_id && tasks.some((t) => String(t.id) === String(state.task_id))) {
+        compareTask.value = state.task_id;
+      }
+      compareFilter = state.compareFilter || "decision_pending";
+      compareDetailFilters = { q: (state.compareDetailFilters && state.compareDetailFilters.q) || "" };
+      compareColumnFilters = {};
+      for (const [key, values] of Object.entries(state.compareColumnFilters || {})) {
+        compareColumnFilters[key] = new Set(Array.isArray(values) ? values : []);
+      }
+      compareColumnSort = { key: "", direction: "asc", ...(state.compareColumnSort || {}) };
+      renderCompareResult(state.compareData);
+      return true;
+    }
+
+    function renderCompareDetailFilters() {
+      return `
+        <div class="compare-filter-bar">
+          <input id="compareSearch" type="text" value="${esc(compareDetailFilters.q)}" placeholder="实时搜索编号 / 姓名 / 身份证号 / 字段值 / 企业 / 图片证据" />
+          <button class="btn" id="compareClearFilters" type="button">清空</button>
+        </div>
+      `;
+    }
+
+    function visibleBusinessDiffs(row) {
+      return (row.field_diffs || []).filter((d) => {
+        if (d.section === "employment") return false;
+        const name = String(d.field_name || d.field || "");
+        return !["截图日期", "截图时间", "截图时间一致", "capture_date", "capture_time"].includes(name);
+      });
+    }
+
+    function businessDecisionGroups(row) {
+      const groups = {};
+      for (const diff of visibleBusinessDiffs(row)) {
+        const name = String(diff.field_name || diff.field || "");
+        const key = String(diff.field_key || diff.key || diff.field || "");
+        const raw = `${name}:${key}`;
+        if (["姓名", "person_name"].includes(name) || key === "person_name") {
+          groups["姓名"] = true;
+        } else if (["身份证号", "masked_id", "id_card"].includes(name) || ["masked_id", "id_card"].includes(key)) {
+          groups["身份证号"] = true;
+        } else if (
+          ["相关企业", "任职", "参股", "related_count", "employment_count", "shareholding_count", "企/任/参"].includes(name)
+          || ["related_count", "employment_count", "shareholding_count"].includes(key)
+        ) {
+          groups["企/任/参"] = true;
+        } else {
+          groups[name || key || raw || "其他"] = true;
+        }
+      }
+      return Object.keys(groups);
+    }
+
+    function businessDecisionRequiredCount(row) {
+      if (["new", "missing"].includes(row.business_diff_status)) return 0;
+      return businessDecisionGroups(row).length;
+    }
+
+    function employmentDecisionRequiredCount(row) {
+      return employmentDecisionGroups(row).length;
+    }
+
+    function rowNeedsDecision(row) {
+      return rowDecisionRequiredCount(row) > 0;
+    }
+
+    function employmentDecisionGroups(row) {
+      const groups = {};
+      for (const diff of row.employment_diffs || []) {
+        const b = diff.baseline_row || {};
+        const c = diff.current_row || {};
+        const companyKey = c.company_key || b.company_key || c.company_name || b.company_name || "未识别企业";
+        if (["company_added", "company_missing"].includes(diff.diff_type)) {
+          groups[`company:${diff.diff_type}:${companyKey}`] = true;
+        } else {
+          groups[`field:${companyKey}:${diff.field_name || ""}`] = true;
+        }
+      }
+      return Object.keys(groups);
+    }
+
+    function rowDecisionRequiredCount(row) {
+      return businessDecisionRequiredCount(row) + employmentDecisionRequiredCount(row);
+    }
+
+    function rowDecisionResolvedCount(row, decision) {
+      const required = rowDecisionRequiredCount(row);
+      if (!required || !decision) return 0;
+      if (["keep_baseline", "accept_current", "manual", "remove", "skip"].includes(decision.action || "")) return required;
+      if (decision.action !== "field_decisions") return 0;
+      const basic = decision.basic && typeof decision.basic === "object" ? Object.keys(decision.basic).length : 0;
+      const employment = decision.employment && typeof decision.employment === "object" ? Object.keys(decision.employment).length : 0;
+      const employmentCompanies = decision.employment_companies && typeof decision.employment_companies === "object" ? Object.keys(decision.employment_companies).length : 0;
+      return Math.min(required, basic + employment + employmentCompanies);
+    }
+
+    function rowDecisionDone(row, decisions) {
+      const required = rowDecisionRequiredCount(row);
+      return required > 0 && rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
+    }
+
+    function decisionLabel(decision) {
+      const action = decision && decision.action;
+      const map = { keep_baseline: "保留", accept_current: "采用", manual: "修正", remove: "移除", field_decisions: "已裁决", skip: "放弃" };
+      return map[action] || "";
+    }
+
+    function renderDecisionBar(data, rows) {
+      const decisions = readCompareDecisions(data);
+      const decisionRows = rows.filter((row) => rowDecisionRequiredCount(row) > 0 || decisions[String(row._compare_idx)]);
+      const doneRows = decisionRows.filter((row) => {
+        const required = rowDecisionRequiredCount(row);
+        if (!required) return !!decisions[String(row._compare_idx)];
+        return rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
+      });
+      const pendingRows = Math.max(0, decisionRows.length - doneRows.length);
+      const statusHtml = decisionRows.length === 0
+        ? `<span class="decision-chip done">无需裁决</span>`
+        : pendingRows > 0
+          ? `<span class="decision-chip need">待裁决 ${pendingRows} 条</span><span class="decision-chip">已裁决 ${doneRows.length}/${decisionRows.length}</span>`
+          : `<span class="decision-chip done">已完成 ${doneRows.length}/${decisionRows.length}</span>`;
+      const buttonText = decisionRows.length === 0 ? "无需更新" : doneRows.length > 0 && pendingRows > 0 ? "提交已裁决" : "提交基线更新";
+      const buttonTitle = decisionRows.length === 0
+        ? "本次比对没有需要裁决的业务差异，不生成新的真实基线版本。"
+        : pendingRows > 0
+          ? `还有 ${pendingRows} 条记录未裁决，点击可查看提示。`
+          : "提交全部裁决并生成新的真实基线版本。";
+      return `
+        <div class="decision-bar">
+          <div>
+            <strong>真实基线更新</strong>
+            <div class="compare-note" style="margin:3px 0 0;">
+              一致、仅截图时间变化、新增/缺失记录不自动生成新基线；只有已匹配记录的基础字段或任职明细差异需要裁决。
+            </div>
+          </div>
+          <div class="stats">
+            ${statusHtml}
+            <button class="btn" id="submitBaselineUpdate" type="button" title="${esc(buttonTitle)}">${esc(buttonText)}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function compareFilterItems(s, scopeRows = null) {
+      const rows = Array.isArray(scopeRows) ? scopeRows : prepareCompareRows((lastCompareData && lastCompareData.records) || []);
+      const decisions = readCompareDecisions(lastCompareData);
+      const pendingDecisionCount = rows.filter((row) => rowDecisionRequiredCount(row) > rowDecisionResolvedCount(row, decisions[String(row._compare_idx)])).length;
+      const doneDecisionCount = rows.filter((row) => {
+        const required = rowDecisionRequiredCount(row);
+        return required > 0 && rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
+      }).length;
+      return [
+        ["all", "全部", rows.length],
+        ["review", "需复核", rows.filter((r) => r.requires_review).length],
+        ["decision_pending", "待裁决", pendingDecisionCount],
+        ["decision_done", "已裁决", doneDecisionCount],
+        ["business", "业务变化", rows.filter((r) => r.business_diff_status === "changed").length],
+        ["employment", "任职变化", rows.filter((r) => (r.employment_diffs || []).length).length],
+        ["has_employment", "有任职", rows.filter((r) => hasEmploymentInfo(r)).length],
+        ["new", "新增", rows.filter((r) => r.business_diff_status === "new").length],
+        ["missing", "缺失", rows.filter((r) => r.business_diff_status === "missing").length],
+        ["older", "截图疑点", rows.filter((r) => captureReviewStatus(r) === "suspicious").length],
+        ["time", "仅时间变化", rows.filter((r) => r.business_diff_status === "same" && r.capture_time_diff_status !== "same").length],
+      ];
+    }
+
+    function compareFilterLabel(s) {
+      const item = compareFilterItems(s).find(([key]) => key === compareFilter);
+      return item ? `${item[1]} ${Number(item[2] || 0)}` : "重点差异";
+    }
+
+    function renderCompareViz(s) {
+      const total = Number(s.total_records || 0);
+      const same = Number(s.same_records || 0);
+      const changed = Number(s.business_changed_records || 0);
+      const added = Number(s.new_records || 0);
+      const missing = Number(s.missing_records || 0);
+      const timeOnly = Number(s.capture_time_only_changed || 0);
+      const severity = s.severity || {};
+      return `
+        <div class="compare-viz">
+          <div class="viz-card">
+            <div class="viz-title">变化构成</div>
+            <div class="stack-bar" title="业务一致 / 业务变化 / 新增 / 缺失 / 仅时间变化">
+              <div class="stack-seg same" style="width:${pct(same, total)}%"></div>
+              <div class="stack-seg changed" style="width:${pct(changed, total)}%"></div>
+              <div class="stack-seg new" style="width:${pct(added, total)}%"></div>
+              <div class="stack-seg missing" style="width:${pct(missing, total)}%"></div>
+              <div class="stack-seg time" style="width:${pct(timeOnly, total)}%"></div>
+            </div>
+            <div class="legend">
+              <span><i class="dot same"></i>业务一致 ${same}</span>
+              <span><i class="dot changed"></i>业务变化 ${changed}</span>
+              <span><i class="dot new"></i>新增 ${added}</span>
+              <span><i class="dot missing"></i>缺失 ${missing}</span>
+              <span><i class="dot time"></i>仅时间变化 ${timeOnly}</span>
+            </div>
+          </div>
+          <div class="viz-card">
+            <div class="viz-title">风险分布</div>
+            <div class="risk-grid">
+              ${["info", "low", "medium", "high", "critical"].map((key) => `
+                <div class="risk-pill">
+                  <strong>${Number(severity[key] || 0)}</strong>
+                  <span>${esc(severityLabel(key))}</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function recordCountsText(record) {
+      if (!record) return "—";
+      return `${record.related_count || "0"} / ${record.employment_count || "0"} / ${record.shareholding_count || "0"}`;
+    }
+
+    function renderRecordCard(title, record) {
+      if (!record) {
+        return `
+          <div class="record-card">
+            <h4>${esc(title)}</h4>
+            <div class="empty" style="padding:24px;">无记录</div>
+          </div>
+        `;
+      }
+      const capture = [record.capture_date, record.capture_time].filter(Boolean).join(" ") || "—";
+      const rows = [
+        ["记录键", record.record_key || "—"],
+        ["文件编号", record.file_id || "—"],
+        ["文件名", record.file_name || "—"],
+        ["姓名", record.person_name || "—"],
+        ["身份证号", record.masked_id || "—"],
+        ["截图时间", capture],
+        ["企/任/参", recordCountsText(record)],
+        ["复核状态", record.review_status || "—"],
+      ];
+      return `
+        <div class="record-card">
+          <h4>${esc(title)}</h4>
+          <div class="record-fields">
+            ${rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>`).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRecordDetail(row) {
+      return `
+        <details class="record-detail" ${row.requires_review ? "open" : ""}>
+          <summary>基线记录 / 本次记录详情</summary>
+          <div class="record-pair">
+            ${renderRecordCard("基线记录", row.baseline)}
+            ${renderRecordCard("本次记录", row.current)}
+          </div>
+          ${renderEmploymentDiffs(row)}
+        </details>
+      `;
+    }
+
+    function rowSearchText(row) {
+      const parts = [
+        row.record_key,
+        recordId(row),
+        recordName(row),
+        recordMaskedId(row),
+        recordCapture(row),
+      ];
+      for (const rec of [row.baseline, row.current]) {
+        if (!rec) continue;
+        parts.push(rec.file_name, rec.person_name, rec.masked_id, rec.related_count, rec.employment_count, rec.shareholding_count);
+      }
+      for (const diff of row.field_diffs || []) {
+        parts.push(diff.field_name, diff.baseline_value, diff.current_value, diff.diff_type);
+      }
+      for (const diff of row.employment_diffs || []) {
+        const b = diff.baseline_row || {};
+        const c = diff.current_row || {};
+        parts.push(
+          diff.field_name,
+          diff.baseline_value,
+          diff.current_value,
+          diff.diff_type,
+          b.company_name,
+          c.company_name,
+          b.business_status,
+          c.business_status,
+          b.role,
+          c.role,
+          b.share_ratio,
+          c.share_ratio
+        );
+      }
+      for (const diff of row.image_diffs || []) {
+        parts.push(diff.field_name, diff.baseline_value, diff.current_value, diff.diff_type, diff.baseline_image, diff.current_image);
+      }
+      for (const detail of [...(row.baseline_image_details || []), ...(row.current_image_details || [])]) {
+        parts.push(detail.name, detail.path, detail.size_bytes, detail.modified_at, detail.width, detail.height);
+      }
+      parts.push(...(row.baseline_images || []), ...(row.current_images || []));
+      return parts.map((x) => String(x || "").toLowerCase()).join(" ");
+    }
+
+    function applyCompareDetailFilters(rows) {
+      const q = (compareDetailFilters.q || "").trim().toLowerCase();
+      return rows.filter((row) => {
+        if (q && !rowSearchText(row).includes(q)) return false;
+        return true;
+      });
+    }
+
+    function hasCompareDetailFilters() {
+      return !!(
+        (compareDetailFilters.q || "").trim()
+      );
+    }
+
+
+    const COMPARE_COLUMN_DEFS = [
+      { key: "status", label: "状态" },
+      { key: "severity", label: "风险" },
+      { key: "record_id", label: "编号" },
+      { key: "name", label: "姓名" },
+      { key: "masked_id", label: "身份证号" },
+      { key: "capture", label: "截图时间" },
+      { key: "related_count", label: "企" },
+      { key: "employment_count", label: "任" },
+      { key: "shareholding_count", label: "参" },
+      { key: "basic", label: "基础差异" },
+      { key: "employment", label: "任职差异" },
+      { key: "image", label: "图片证据" },
+      { key: "decision", label: "裁决" },
+    ];
+
+    function compareColumnDefByKey(key) {
+      return COMPARE_COLUMN_DEFS.find((d) => d.key === key);
+    }
+
+    function compareColumnText(row, key, decisions = {}) {
+      if (key === "status") return recordStatusLabel(row);
+      if (key === "severity") return severityLabel(row.severity);
+      if (key === "record_id") return recordId(row);
+      if (key === "name") return recordName(row);
+      if (key === "masked_id") return recordMaskedId(row);
+      if (key === "capture") return recordCapture(row);
+      if (key === "related_count") return recordCountValue(row, "related_count");
+      if (key === "employment_count") return recordCountValue(row, "employment_count");
+      if (key === "shareholding_count") return recordCountValue(row, "shareholding_count");
+      if (key === "basic") return (row.field_diffs || []).length ? renderBasicDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "基础信息无变化";
+      if (key === "employment") return (row.employment_diffs || []).length ? renderEmploymentSummaryChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "任职明细无变化";
+      if (key === "image") return (row.image_diffs || []).length ? renderImageDiffChips(row).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "图片证据无变化";
+      if (key === "decision") {
+        if (!rowNeedsDecision(row)) return "无需裁决";
+        const decision = decisions[String(row._compare_idx)];
+        return rowDecisionDone(row, decisions) ? (decisionLabel(decision) || "已裁决") : "待裁决";
+      }
+      return "—";
+    }
+
+    function compareColumnFilterSummary() {
+      const chips = [];
+      for (const def of COMPARE_COLUMN_DEFS) {
+        const picked = compareColumnFilters[def.key];
+        if (picked && picked.size) chips.push(`<span class="chip">${esc(def.label)}: ${picked.size}</span>`);
+      }
+      if (compareColumnSort.key) {
+        const def = compareColumnDefByKey(compareColumnSort.key);
+        chips.push(`<span class="chip">排序: ${esc(def ? def.label : compareColumnSort.key)} ${compareColumnSort.direction === "desc" ? "降序" : "升序"}</span>`);
+      }
+      return `<div id="compareFilterSummary" class="compare-filter-summary">${chips.length ? chips.join("") : '<span class="chip">未设置列筛选</span>'}</div>`;
+    }
+
+    function applyCompareColumnFilters(rows, decisions) {
+      return rows.filter((row) => {
+        for (const def of COMPARE_COLUMN_DEFS) {
+          const picked = compareColumnFilters[def.key];
+          if (!picked || !picked.size) continue;
+          if (!picked.has(compareColumnText(row, def.key, decisions) || "—")) return false;
+        }
+        return true;
+      });
+    }
+
+    function sortCompareRows(rows, decisions) {
+      if (!compareColumnSort.key) return rows;
+      const dir = compareColumnSort.direction === "desc" ? -1 : 1;
+      return [...rows].sort((a, b) => {
+        const av = compareColumnText(a, compareColumnSort.key, decisions);
+        const bv = compareColumnText(b, compareColumnSort.key, decisions);
+        const an = Number(av);
+        const bn = Number(bv);
+        if (Number.isFinite(an) && Number.isFinite(bn)) return (an - bn) * dir;
+        return String(av || "").localeCompare(String(bv || ""), "zh-CN") * dir;
+      });
+    }
+
+    function compareColumnCounts(rows, def, decisions) {
+      const map = new Map();
+      for (const row of rows) {
+        const value = compareColumnText(row, def.key, decisions) || "—";
+        map.set(value, (map.get(value) || 0) + 1);
+      }
+      return Array.from(map.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN"));
+    }
+
+    function renderCompareHeaderCell(key) {
+      const def = compareColumnDefByKey(key);
+      const picked = compareColumnFilters[key];
+      const count = picked && picked.size ? picked.size : "";
+      const mark = compareColumnSort.key === key ? compareColumnSort.direction : "";
+      return `<th class="sort-filter-th" data-column-key="${esc(key)}"><div class="th-wrap"><button class="th-sort" type="button"><span>${esc(def ? def.label : key)}</span><span class="sort-mark ${esc(mark)}"></span></button><button class="th-filter ${count ? "active" : ""}" type="button" data-count="${esc(count)}" aria-label="筛选${esc(def ? def.label : key)}"></button></div></th>`;
+    }
+
+    function ensureCompareColumnPopover() {
+      let pop = document.getElementById("compareColumnFilterPopover");
+      if (!pop) {
+        pop = document.createElement("div");
+        pop.id = "compareColumnFilterPopover";
+        pop.className = "col-popover";
+        document.body.appendChild(pop);
+      }
+      return pop;
+    }
+
+    function closeCompareColumnPopover() {
+      compareOpenFilterKey = "";
+      const pop = ensureCompareColumnPopover();
+      pop.classList.remove("open");
+      pop.innerHTML = "";
+    }
+
+    function renderCompareColumnPopover(def, anchor, decisions) {
+      const pop = ensureCompareColumnPopover();
+      const opts = compareColumnCounts(compareHeaderBaseRows, def, decisions);
+      const picked = compareColumnFilters[def.key] || new Set();
+      compareOpenFilterKey = def.key;
+      const optionHtml = (items) => items.map(([value, count]) => `
+        <div class="pop-option">
+          <label title="${esc(value)}"><input type="checkbox" class="pop-check" data-value="${esc(value)}" ${picked.has(value) ? "checked" : ""} /><span class="pop-value">${esc(value)}</span></label>
+          <span class="pop-count">${count}</span>
+        </div>
+      `).join("");
+      pop.innerHTML = `
+        <div class="pop-head">
+          <div class="pop-title">${esc(def.label)}筛选（${picked.size || 0}/${opts.length || 0}）</div>
+          <input class="pop-search" type="search" placeholder="输入筛选项..." />
+          <div class="pop-actions"><button class="pop-btn" type="button" data-action="all">全选</button><button class="pop-btn" type="button" data-action="clear">清空</button><button class="pop-btn" type="button" data-action="close">关闭</button></div>
+        </div>
+        <div class="pop-options">${optionHtml(opts)}</div>
+      `;
+      const rect = anchor.getBoundingClientRect();
+      const width = 290;
+      pop.style.left = `${Math.min(Math.max(10, rect.right - width), window.innerWidth - width - 10)}px`;
+      pop.style.top = `${Math.max(10, Math.min(rect.bottom + 6, window.innerHeight - 430))}px`;
+      pop.classList.add("open");
+      const bindChecks = () => pop.querySelectorAll(".pop-check").forEach((input) => {
+        input.addEventListener("change", () => {
+          const set = compareColumnFilters[def.key] || new Set();
+          if (input.checked) set.add(input.dataset.value || "—");
+          else set.delete(input.dataset.value || "—");
+          compareColumnFilters[def.key] = set;
+          renderCompareResult(lastCompareData);
+        });
+      });
+      pop.querySelector(".pop-search").addEventListener("input", (ev) => {
+        const keyword = String(ev.target.value || "").toLowerCase();
+        const filtered = keyword ? opts.filter(([value]) => String(value).toLowerCase().includes(keyword)) : opts;
+        pop.querySelector(".pop-options").innerHTML = optionHtml(filtered);
+        bindChecks();
+      });
+      pop.querySelectorAll(".pop-btn").forEach((btn) => btn.addEventListener("click", () => {
+        const action = btn.dataset.action;
+        if (action === "all") compareColumnFilters[def.key] = new Set(opts.map(([v]) => v));
+        if (action === "clear") compareColumnFilters[def.key] = new Set();
+        if (action === "close") { closeCompareColumnPopover(); return; }
+        renderCompareResult(lastCompareData);
+      }));
+      bindChecks();
+    }
+
+    function bindCompareHeaderInteractions(decisions) {
+      compareResult.querySelectorAll("th.sort-filter-th").forEach((th) => {
+        const key = th.dataset.columnKey;
+        const def = compareColumnDefByKey(key);
+        th.querySelector(".th-sort")?.addEventListener("click", () => {
+          if (compareColumnSort.key === key) compareColumnSort.direction = compareColumnSort.direction === "asc" ? "desc" : "asc";
+          else compareColumnSort = { key, direction: "asc" };
+          renderCompareResult(lastCompareData);
+        });
+        th.querySelector(".th-filter")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (!def) return;
+          if (compareOpenFilterKey === key && ensureCompareColumnPopover().classList.contains("open")) closeCompareColumnPopover();
+          else renderCompareColumnPopover(def, ev.currentTarget, decisions);
+        });
+      });
+      if (!window.__compareColumnPopoverBound) {
+        document.addEventListener("click", (ev) => {
+          const pop = ensureCompareColumnPopover();
+          if (!pop.classList.contains("open")) return;
+          if (pop.contains(ev.target) || ev.target.closest(".th-filter")) return;
+          closeCompareColumnPopover();
+        });
+        window.__compareColumnPopoverBound = true;
+      }
+    }
+
+    let compareSelectedUid = "";
+    let compareImageIndex = { baseline: 0, current: 0 };
+
+    function compareRowUid(row, idx) {
+      return row._compare_uid || `${row.record_key || ""}::${recordId(row)}::${recordName(row)}::${idx}`;
+    }
+
+    function prepareCompareRows(rows) {
+      rows.forEach((row, idx) => {
+        row._compare_idx = idx;
+        if (!row._compare_uid) row._compare_uid = compareRowUid(row, idx);
+      });
+      return rows;
+    }
+
+    function chipClassBySeverity(severity) {
+      if (["high", "critical"].includes(severity)) return "bad";
+      if (["medium"].includes(severity)) return "changed";
+      return "same";
+    }
+
+    function renderBasicDiffChips(row) {
+      if (row.business_diff_status === "new") return `<span class="diff-chip changed">新增记录</span>`;
+      if (row.business_diff_status === "missing") return `<span class="diff-chip changed">基线缺失</span>`;
+      const diffs = visibleBusinessDiffs(row);
+      if (!diffs.length) return `<span class="diff-chip same">基础信息无变化</span>`;
+      return diffs.slice(0, 6).map((d) => `
+        <span class="diff-chip ${esc(chipClassBySeverity(d.severity || "medium"))}" title="${esc(d.baseline_value || "—")} -> ${esc(d.current_value || "—")}">
+          ${esc(d.field_name || "字段")} ${esc(d.baseline_value || "—")} → ${esc(d.current_value || "—")}
+        </span>
+      `).join("") + (diffs.length > 6 ? `<span class="diff-chip changed">另 ${diffs.length - 6} 项</span>` : "");
+    }
+
+    function renderEmploymentSummaryChips(row) {
+      const diffs = row.employment_diffs || [];
+      if (!diffs.length) return `<span class="diff-chip same">任职明细无变化</span>`;
+      const grouped = diffs.reduce((acc, d) => {
+        const key = d.diff_type || "employment_changed";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      const labels = {
+        company_added: "新增企业字段",
+        company_missing: "缺失企业字段",
+        company_name_changed: "企业名称",
+        company_status_changed: "经营状态",
+        company_role_changed: "职务",
+        company_share_changed: "持股比例",
+        employment_changed: "任职变化",
+      };
+      return Object.entries(grouped).slice(0, 5).map(([key, count]) => `
+        <span class="diff-chip bad">${esc(labels[key] || key)} ${Number(count || 0)}</span>
+      `).join("") + (Object.keys(grouped).length > 5 ? `<span class="diff-chip changed">另 ${Object.keys(grouped).length - 5} 类</span>` : "");
+    }
+
+    function imageEvidenceFlags(row) {
+      const flags = { dimensions: false, size: false, time: false, count: false };
+      const diffs = row.image_diffs || [];
+      for (const diff of diffs) {
+        const type = diff.diff_type || "";
+        if (["image_added", "image_missing"].includes(type)) flags.count = true;
+        if (type === "dimensions_changed") flags.dimensions = true;
+        if (type === "size_bytes_changed") flags.size = true;
+      }
+      const baselineImages = row.baseline_images || [];
+      const currentImages = row.current_images || [];
+      if (baselineImages.length !== currentImages.length) flags.count = true;
+      const keyOf = (value) => String(value || "").split(/[\\/]/).pop().replace(/\s+/g, "").toLowerCase();
+      const mapDetails = (details) => {
+        const map = new Map();
+        (details || []).forEach((detail) => {
+          const key = keyOf(detail.name);
+          if (key) map.set(key, detail);
+        });
+        return map;
+      };
+      const baselineDetails = mapDetails(row.baseline_image_details || []);
+      const currentDetails = mapDetails(row.current_image_details || []);
+      baselineDetails.forEach((base, key) => {
+        const curr = currentDetails.get(key);
+        if (!curr) return;
+        const baseDim = base.width && base.height ? `${base.width}x${base.height}` : "";
+        const currDim = curr.width && curr.height ? `${curr.width}x${curr.height}` : "";
+        if (baseDim && currDim && baseDim !== currDim) flags.dimensions = true;
+        if (base.size_bytes && curr.size_bytes && String(base.size_bytes) !== String(curr.size_bytes)) flags.size = true;
+        if (base.modified_at && curr.modified_at && String(base.modified_at) === String(curr.modified_at)) flags.time = true;
+      });
+      return flags;
+    }
+
+    function renderImageDiffChips(row) {
+      const flags = imageEvidenceFlags(row);
+      const chips = [];
+      if (flags.dimensions) chips.push(`<span class="diff-chip changed">尺寸</span>`);
+      if (flags.size) chips.push(`<span class="diff-chip changed">大小</span>`);
+      if (flags.time) chips.push(`<span class="diff-chip changed">时间</span>`);
+      if (flags.count) chips.push(`<span class="diff-chip changed">数量</span>`);
+      return chips.length ? chips.join("") : `<span class="diff-chip same">正常</span>`;
+    }
+
+    function recordStatusLabel(row) {
+      if (row.match_status === "unmatched_new") return "新增";
+      if (row.match_status === "unmatched_missing") return "缺失";
+      if (row.requires_review) return "变化";
+      return "正常";
+    }
+
+    function recordStatusClass(row) {
+      if (row.requires_review || ["unmatched_new", "unmatched_missing"].includes(row.match_status)) return "bad";
+      if (row.capture_time_diff_status && row.capture_time_diff_status !== "same") return "changed";
+      return "same";
+    }
+
+    function imageUrlFromFile(taskId, file) {
+      if (!taskId || !file) return "";
+      return `/runs/${encodeURIComponent(taskId)}/dashboard/images/${encodeURIComponent(file)}`;
+    }
+
+    function imageList(row, side) {
+      const key = side === "baseline" ? "baseline_images" : "current_images";
+      const record = side === "baseline" ? row.baseline : row.current;
+      const list = (row[key] || []).filter(Boolean);
+      if (!list.length && record && record.file_name) list.push(record.file_name);
+      return [...new Set(list)];
+    }
+
+    function renderImageBatch(label, taskId, row, side) {
+      const images = imageList(row, side);
+      const total = images.length;
+      const idx = Math.max(0, Math.min(Number(compareImageIndex[side] || 0), Math.max(0, total - 1)));
+      const file = total ? images[idx] : "";
+      const src = imageUrlFromFile(taskId, file);
+      return `
+        <div class="image-card">
+          <h4>${esc(label)}${file ? ` · ${esc(file)}` : ""}</h4>
+          <div class="image-frame">
+            ${src ? `<img src="${esc(src)}" alt="${esc(label)}" title="点击放大/恢复" />` : `<div class="empty" style="padding:18px;">图片不可用</div>`}
+          </div>
+          <div class="batch-controls">
+            <button class="icon-btn" type="button" data-image-nav="${esc(side)}" data-delta="-1" ${total <= 1 ? "disabled" : ""}>‹</button>
+            <span class="mono">${total ? `${idx + 1} / ${total}` : "0 / 0"}</span>
+            <button class="icon-btn" type="button" data-image-nav="${esc(side)}" data-delta="1" ${total <= 1 ? "disabled" : ""}>›</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function compareValueCell(baselineValue, currentValue) {
+      const b = baselineValue === undefined || baselineValue === null || baselineValue === "" ? "—" : baselineValue;
+      const c = currentValue === undefined || currentValue === null || currentValue === "" ? "—" : currentValue;
+      const same = String(b) === String(c);
+      return `
+        <div class="compare-cell ${same ? "same" : "changed"}">
+          <div class="b">${esc(b)}</div>
+          <div class="arr">→</div>
+          <div class="c">${esc(c)}</div>
+        </div>
+      `;
+    }
+
+    function renderBasicCompare(row) {
+      if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") {
+        const record = row.current || row.baseline || {};
+        const title = row.match_status === "unmatched_new" ? "新增记录共识结果" : "减少记录基线结果";
+        const capture = [record.capture_date, record.capture_time].filter(Boolean).join(" ");
+        const fields = [
+          ["姓名", record.person_name],
+          ["身份证号", record.masked_id],
+          ["截图时间", capture],
+          ["相关企业", record.related_count],
+          ["任职", record.employment_count],
+          ["参股", record.shareholding_count],
+          ["复核状态", record.review_status],
+        ];
+        return `
+          <div class="compare-block">
+            <h4>${esc(title)}</h4>
+            <table>
+              <thead><tr><th>字段</th><th>值</th></tr></thead>
+              <tbody>${fields.map(([name, value]) => `<tr><td>${esc(name)}</td><td><strong>${esc(value || "—")}</strong></td></tr>`).join("")}</tbody>
+            </table>
+          </div>
+        `;
+      }
+      const b = row.baseline || {};
+      const c = row.current || {};
+      const bCapture = [b.capture_date, b.capture_time].filter(Boolean).join(" ");
+      const cCapture = [c.capture_date, c.capture_time].filter(Boolean).join(" ");
+      const fields = [
+        ["姓名", b.person_name, c.person_name],
+        ["身份证号", b.masked_id, c.masked_id],
+        ["截图时间", bCapture, cCapture],
+        ["相关企业", b.related_count, c.related_count],
+        ["任职", b.employment_count, c.employment_count],
+        ["参股", b.shareholding_count, c.shareholding_count],
+        ["复核状态", b.review_status, c.review_status],
+      ];
+      return `
+        <div class="compare-block">
+          <h4>基础信息共识结果</h4>
+          <table>
+            <thead><tr><th>字段</th><th>基线 → 本次</th><th>状态</th></tr></thead>
+            <tbody>
+              ${fields.map(([name, bv, cv]) => {
+                const same = String(bv || "") === String(cv || "");
+                return `<tr><td>${esc(name)}</td><td>${compareValueCell(bv, cv)}</td><td><span class="diff-status ${same ? "same" : "changed"}">${same ? "一致" : "变化"}</span></td></tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function employmentCompareKey(row, idx) {
+      const key = row.company_key || "";
+      const name = row.company_name || "";
+      if (key && !key.includes("未识别企业") && !name.includes("未识别企业")) return `k:${key}`;
+      return `p:${row.row_index || idx}`;
+    }
+
+    function companyKeysCompatible(left, right) {
+      const a = String(left || "").replace(/\s+/g, "");
+      const b = String(right || "").replace(/\s+/g, "");
+      if (!a || !b || a.includes("未识别企业") || b.includes("未识别企业")) return false;
+      if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) >= 6;
+      const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+      let best = 0;
+      for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+          if (a[i - 1] === b[j - 1]) {
+            matrix[i][j] = matrix[i - 1][j - 1] + 1;
+            best = Math.max(best, matrix[i][j]);
+          }
+        }
+      }
+      return best / Math.max(a.length, b.length) >= 0.86;
+    }
+
+    function alignEmploymentRows(row) {
+      const baselineRows = row.baseline_employment || [];
+      const currentRows = row.current_employment || [];
+      const used = new Set();
+      const pairs = baselineRows.map((baseline, baselineIdx) => {
+        let matchedIdx = currentRows.findIndex((current, idx) => {
+          if (used.has(idx)) return false;
+          return employmentCompareKey(baseline, baselineIdx) === employmentCompareKey(current, idx);
+        });
+        if (matchedIdx < 0) {
+          matchedIdx = currentRows.findIndex((current, idx) => {
+            if (used.has(idx)) return false;
+            return companyKeysCompatible(baseline.company_key, current.company_key);
+          });
+        }
+        if (matchedIdx >= 0) {
+          used.add(matchedIdx);
+          return { baseline, current: currentRows[matchedIdx] };
+        }
+        return { baseline, current: null };
+      });
+      currentRows.forEach((current, idx) => {
+        if (!used.has(idx)) pairs.push({ baseline: null, current });
+      });
+      return pairs;
+    }
+
+    function rowCompareStatus(pair) {
+      if (!pair.baseline) return ["新增", "bad"];
+      if (!pair.current) return ["缺失", "bad"];
+      const fields = ["company_name", "business_status", "role", "share_ratio"];
+      return fields.some((key) => String(pair.baseline[key] || "") !== String(pair.current[key] || "")) ? ["变化", "changed"] : ["一致", "same"];
+    }
+
+    function companyTitle(row) {
+      if (!row) return "—";
+      return row.company_name || "未识别企业";
+    }
+
+    function companySub(row) {
+      if (!row) return "";
+      const parts = [row.business_status, row.role, row.share_ratio].filter(Boolean);
+      return parts.join(" · ");
+    }
+
+    function renderCompanyFieldCompare(pair) {
+      const b = pair.baseline || {};
+      const c = pair.current || {};
+      const fields = [
+        ["企业名称", b.company_name, c.company_name],
+        ["经营状态", b.business_status, c.business_status],
+        ["承担职务", b.role, c.role],
+        ["持股比例", b.share_ratio, c.share_ratio],
+        ["来源图片", b.source_image, c.source_image],
+      ];
+      return `
+        <div class="company-fields">
+          <table>
+            <thead><tr><th>字段</th><th>基线 → 本次</th><th>状态</th></tr></thead>
+            <tbody>
+              ${fields.map(([name, bv, cv]) => {
+                const same = String(bv || "") === String(cv || "");
+                return `<tr><td>${esc(name)}</td><td>${compareValueCell(bv, cv)}</td><td><span class="diff-status ${same ? "same" : "changed"}">${same ? "一致" : "变化"}</span></td></tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderEmploymentCompare(row) {
+      if (row.match_status === "unmatched_new" || row.match_status === "unmatched_missing") {
+        const rows = row.match_status === "unmatched_new" ? (row.current_employment || []) : (row.baseline_employment || []);
+        const title = row.match_status === "unmatched_new" ? "新增记录任职明细" : "减少记录任职明细";
+        return `
+          <div class="compare-block">
+            <h4>${esc(title)}</h4>
+            ${rows.length ? `
+              <table>
+                <thead><tr><th>企业名称</th><th>经营状态</th><th>承担职务</th><th>持股比例</th><th>来源图片</th></tr></thead>
+                <tbody>
+                  ${rows.map((item) => `
+                    <tr>
+                      <td><strong>${esc(item.company_name || "未识别企业")}</strong></td>
+                      <td>${esc(item.business_status || "—")}</td>
+                      <td>${esc(item.role || "—")}</td>
+                      <td>${esc(item.share_ratio || "—")}</td>
+                      <td class="mono">${esc(item.source_image || "—")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            ` : `<div class="empty" style="padding:24px;">无任职企业明细。</div>`}
+          </div>
+        `;
+      }
+      const pairs = alignEmploymentRows(row);
+      return `
+        <div class="compare-block">
+          <h4>任职明细共识结果</h4>
+          ${pairs.length ? `
+            <div class="company-compare-list">
+              ${pairs.map((pair) => {
+                const [label, cls] = rowCompareStatus(pair);
+                const open = cls !== "same" ? "open" : "";
+                return `
+                  <details class="company-card" ${open}>
+                    <summary class="company-summary">
+                      <div class="company-pair">
+                        <div class="company-name">${esc(companyTitle(pair.baseline))}<small>${esc(companySub(pair.baseline))}</small></div>
+                        <div class="arrow">→</div>
+                        <div class="company-name">${esc(companyTitle(pair.current))}<small>${esc(companySub(pair.current))}</small></div>
+                      </div>
+                      <span class="diff-status ${cls}">${label}</span>
+                    </summary>
+                    ${renderCompanyFieldCompare(pair)}
+                  </details>
+                `;
+              }).join("")}
+            </div>
+          ` : `<div class="empty" style="padding:24px;">无任职企业明细。</div>`}
+        </div>
+      `;
+    }
+
+    function renderSelectedCompareRecord(row, data) {
+      if (!row) return `<div class="record-review-pane"><div class="empty">请选择一条差异记录。</div></div>`;
+      const baselineTaskId = data.baseline && data.baseline.source_task_id;
+      const currentTaskId = data.task && data.task.id;
+      return `
+        <div class="record-review-pane">
+          <div class="review-head">
+            <div>
+              <h3>${esc(recordName(row))} <span class="mono">${esc(recordId(row))}</span></h3>
+              <div class="muted">只比较复核后的共识结构化数据，不展示原始 OCR 证据。</div>
+            </div>
+            <div class="stats">
+              <span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span>
+              <span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span>
+            </div>
+          </div>
+          <div class="review-body">
+            <div class="image-pair">
+              ${renderImageBatch("基线批次图片", baselineTaskId, row, "baseline")}
+              ${renderImageBatch("本次批次图片", currentTaskId, row, "current")}
+            </div>
+            ${renderBasicCompare(row)}
+            ${renderEmploymentCompare(row)}
+          </div>
+        </div>
+      `;
+    }
+
+    function compareDetailUrl(row, data, pos) {
+      const params = new URLSearchParams({
+        baseline_id: compareBaseline.value || (data.baseline && data.baseline.id) || "",
+        task_id: compareTask.value || (data.task && data.task.id) || "",
+        idx: String(row._compare_idx ?? ""),
+        pos: String(pos ?? ""),
+      });
+      return `/static/baseline_compare_detail.html?${params.toString()}`;
+    }
+
+    function skipCompareDecision(data, row) {
+      const decisions = readCompareDecisions(data);
+      const idx = String(row._compare_idx);
+      const current = decisions[idx] || {};
+      if (current.action === "skip") {
+        delete decisions[idx];
+      } else {
+        decisions[idx] = {
+          idx: Number(row._compare_idx),
+          record_key: row.record_key || "",
+          action: "skip",
+          reason: "放弃本轮裁决，保留原基线",
+          decided_at: new Date().toISOString(),
+        };
+      }
+      writeCompareDecisions(data, decisions);
+      renderCompareResult(data);
+    }
+
+    async function submitBaselineUpdate(data) {
+      const rows = prepareCompareRows(data.records || []);
+      const decisions = readCompareDecisions(data);
+      const decisionRows = rows.filter((row) => rowDecisionRequiredCount(row) > 0 || decisions[String(row._compare_idx)]);
+      const doneRows = decisionRows.filter((row) => {
+        const required = rowDecisionRequiredCount(row);
+        if (!required) return !!decisions[String(row._compare_idx)];
+        return rowDecisionResolvedCount(row, decisions[String(row._compare_idx)]) >= required;
+      });
+      const pendingRows = Math.max(0, decisionRows.length - doneRows.length);
+      if (!decisionRows.length) {
+        alert("本次比对没有需要人工裁决的业务差异，无需生成新的业务基线版本。");
+        return;
+      }
+      if (!doneRows.length) {
+        alert("当前没有已裁决记录可提交。可以进入详情页裁决，也可以在列表页点击“待裁决”将该条标为放弃裁决。");
+        return;
+      }
+      if (pendingRows > 0 && !window.confirm(`还有 ${pendingRows} 条记录未裁决。本次只提交 ${doneRows.length} 条已裁决记录，其余记录保留原基线，继续吗？`)) return;
+      const defaultName = `${(data.baseline && (data.baseline.name || data.baseline.id)) || "真实基线"} / 裁决更新`;
+      const nextName = window.prompt("确认提交全部裁决并生成新的 active golden 基线。请输入新基线名称：", defaultName);
+      if (nextName === null) return;
+      const baselineName = String(nextName || "").trim();
+      if (!baselineName) {
+        alert("新基线名称不能为空。");
+        return;
+      }
+      const payloadDecisions = doneRows.map((row) => ({
+        ...(decisions[String(row._compare_idx)] || {}),
+        idx: Number(row._compare_idx),
+        record_key: row.record_key || "",
+      }));
+      const btn = compareResult.querySelector("#submitBaselineUpdate");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "提交中...";
+      }
+      try {
+        const baselineId = compareDataBaselineId(data);
+        const taskId = compareDataTaskId(data);
+        const res = await fetch(`/api/baselines/${encodeURIComponent(baselineId)}/apply-compare`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_id: taskId,
+            type: "golden",
+            name: baselineName,
+            notes: "基线比对裁决更新",
+            decisions: payloadDecisions,
+          }),
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.detail || "提交基线更新失败");
+        clearCompareDecisions(data);
+        sessionStorage.removeItem(COMPARE_STATE_KEY);
+        const nextId = result.baseline && result.baseline.id;
+        alert(`已生成新的真实基线：${(result.baseline && result.baseline.name) || nextId}`);
+        if (nextId) location.href = `/baselines?id=${encodeURIComponent(nextId)}`;
+      } catch (err) {
+        alert(err.message || String(err));
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "提交基线更新";
+        }
+      }
+    }
+
+    function renderCompareResult(data) {
+      lastCompareData = data;
+      const s = data.summary || {};
+      const rows = prepareCompareRows(data.records || []);
+      const decisions = readCompareDecisions(data);
+      const baseRows = hasCompareDetailFilters() ? rows : compareRowsByFilter(rows, compareFilter);
+      const detailRows = applyCompareDetailFilters(baseRows);
+      compareHeaderBaseRows = detailRows;
+      const aggregateScopeRows = applyCompareColumnFilters(applyCompareDetailFilters(rows), decisions);
+      const filteredRows = sortCompareRows(applyCompareColumnFilters(detailRows, decisions), decisions);
+      const displayRows = filteredRows.slice(0, 800);
+      saveCompareState(data, filteredRows);
+      compareResult.innerHTML = `
+        ${renderCompareFilters(s, aggregateScopeRows)}
+        ${renderCompareDetailFilters()}
+        ${compareColumnFilterSummary()}
+        ${renderDecisionBar(data, rows)}
+        <div class="table-wrap">
+          <table class="compare-table">
+            <colgroup>
+              <col style="width:58px" />
+              <col style="width:50px" />
+              <col style="width:78px" />
+              <col style="width:76px" />
+              <col style="width:116px" />
+              <col style="width:92px" />
+              <col style="width:34px" />
+              <col style="width:34px" />
+              <col style="width:34px" />
+              <col style="width:118px" />
+              <col style="width:120px" />
+              <col style="width:82px" />
+              <col style="width:64px" />
+              <col style="width:104px" />
+            </colgroup>
+            <thead>
+              <tr>
+                ${renderCompareHeaderCell("status")}
+                ${renderCompareHeaderCell("severity")}
+                ${renderCompareHeaderCell("record_id")}
+                ${renderCompareHeaderCell("name")}
+                ${renderCompareHeaderCell("masked_id")}
+                ${renderCompareHeaderCell("capture")}
+                ${renderCompareHeaderCell("related_count")}
+                ${renderCompareHeaderCell("employment_count")}
+                ${renderCompareHeaderCell("shareholding_count")}
+                ${renderCompareHeaderCell("basic")}
+                ${renderCompareHeaderCell("employment")}
+                ${renderCompareHeaderCell("image")}
+                ${renderCompareHeaderCell("decision")}
+                <th class="right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${displayRows.length ? displayRows.map((row, pos) => `
+                <tr>
+                  <td><span class="diff-status ${esc(recordStatusClass(row))}">${esc(recordStatusLabel(row))}</span></td>
+                  <td><span class="diff-status ${esc(row.severity || "info")}">${esc(severityLabel(row.severity))}</span></td>
+                  <td class="mono">${esc(recordId(row))}</td>
+                  <td><strong>${esc(recordName(row))}</strong></td>
+                  <td>${esc(recordMaskedId(row))}</td>
+                  <td>${esc(recordCapture(row))}</td>
+                  <td class="mono">${esc(recordCountValue(row, "related_count"))}</td>
+                  <td class="mono">${esc(recordCountValue(row, "employment_count"))}</td>
+                  <td class="mono">${esc(recordCountValue(row, "shareholding_count"))}</td>
+                  <td><div class="diff-chips">${renderBasicDiffChips(row)}</div></td>
+                  <td><div class="diff-chips">${renderEmploymentSummaryChips(row)}</div></td>
+                  <td><div class="diff-chips">${renderImageDiffChips(row)}</div></td>
+                  <td>${
+                    rowNeedsDecision(row)
+                      ? rowDecisionDone(row, decisions)
+                        ? `<span class="decision-chip done">${esc(decisionLabel(decisions[String(row._compare_idx)]) || "已裁决")}</span>`
+                        : `<span class="decision-chip need">待裁决</span>`
+                      : `<span class="decision-chip done">无需</span>`
+                  }</td>
+                  <td class="right">
+                    <span class="compare-actions">
+                      <a class="mini-action" href="${esc(compareDetailUrl(row, data, pos))}">详情</a>
+                      ${rowNeedsDecision(row) ? `<button class="mini-action skip" type="button" data-skip-decision="${esc(String(row._compare_idx))}" title="切换放弃裁决，提交时保留原基线">${rowDecisionDone(row, decisions) && (decisions[String(row._compare_idx)] || {}).action === "skip" ? "取消" : "放弃"}</button>` : ""}
+                    </span>
+                  </td>
+                </tr>
+              `).join("") : `<tr><td colspan="14"><div class="empty">当前筛选条件下没有差异记录。</div></td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div class="compare-note">
+          当前展示：${esc(compareFilterLabel(s))}，筛选后 ${filteredRows.length} 条。
+          ${filteredRows.length > 800 ? "列表仅展示前 800 条。" : ""}
+          详情页只比较共识后的结构化结果，图片仅作为核验预览。
+        </div>
+      `;
+      bindCompareHeaderInteractions(decisions);
+      const submit = compareResult.querySelector("#submitBaselineUpdate");
+      submit && submit.addEventListener("click", () => submitBaselineUpdate(data));
+      compareResult.querySelectorAll("[data-skip-decision]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const target = rows.find((row) => String(row._compare_idx) === String(btn.dataset.skipDecision));
+          if (target) skipCompareDecision(data, target);
+        });
+      });
+      compareResult.querySelectorAll("[data-compare-filter]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+        const next = btn.dataset.compareFilter || "decision_pending";
+          compareFilter = compareFilter === next ? "all" : next;
+          renderCompareResult(lastCompareData);
+        });
+      });
+      const search = compareResult.querySelector("#compareSearch");
+      search && search.addEventListener("input", () => {
+        compareDetailFilters.q = search.value || "";
+        shouldFocusCompareSearch = true;
+        clearTimeout(compareSearchTimer);
+        compareSearchTimer = setTimeout(() => renderCompareResult(lastCompareData), 120);
+      });
+      search && search.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") renderCompareResult(lastCompareData);
+      });
+      if (shouldFocusCompareSearch) {
+        const focusedSearch = compareResult.querySelector("#compareSearch");
+        if (focusedSearch) {
+          focusedSearch.focus();
+          focusedSearch.setSelectionRange(focusedSearch.value.length, focusedSearch.value.length);
+        }
+        shouldFocusCompareSearch = false;
+      }
+      const apply = compareResult.querySelector("#compareApplyFilters");
+      apply && apply.addEventListener("click", () => renderCompareResult(lastCompareData));
+      const business = compareResult.querySelector("#compareBusinessFilter");
+      business && business.addEventListener("change", () => {
+        compareDetailFilters.business = business.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const capture = compareResult.querySelector("#compareCaptureFilter");
+      capture && capture.addEventListener("change", () => {
+        compareDetailFilters.capture = capture.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const employment = compareResult.querySelector("#compareEmploymentFilter");
+      employment && employment.addEventListener("change", () => {
+        compareDetailFilters.employment = employment.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const severity = compareResult.querySelector("#compareSeverityFilter");
+      severity && severity.addEventListener("change", () => {
+        compareDetailFilters.severity = severity.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const decision = compareResult.querySelector("#compareDecisionFilter");
+      decision && decision.addEventListener("change", () => {
+        compareDetailFilters.decision = decision.value || "";
+        renderCompareResult(lastCompareData);
+      });
+      const reviewOnly = compareResult.querySelector("#compareReviewOnly");
+      reviewOnly && reviewOnly.addEventListener("change", () => {
+        compareDetailFilters.reviewOnly = !!reviewOnly.checked;
+        renderCompareResult(lastCompareData);
+      });
+      const clear = compareResult.querySelector("#compareClearFilters");
+      clear && clear.addEventListener("click", () => {
+        compareDetailFilters = { q: "" };
+        compareColumnFilters = {};
+        compareColumnSort = { key: "", direction: "asc" };
+        renderCompareResult(lastCompareData);
+      });
+    }
+
+    async function startCompare() {
+      const baselineId = compareBaseline.value;
+      const taskId = compareTask.value;
+      if (!baselineId || !taskId) {
+        alert("请先选择基线和已完成任务。");
+        return;
+      }
+      compareBtn.disabled = true;
+      compareBtn.textContent = "比对中...";
+      compareResult.innerHTML = `<div class="empty">正在生成差异结果...</div>`;
+      try {
+        const res = await fetch("/api/compare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseline_id: baselineId, task_id: taskId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "比对失败");
+        compareFilter = "decision_pending";
+        compareDetailFilters = { q: "" };
+        compareColumnFilters = {};
+        compareColumnSort = { key: "", direction: "asc" };
+        renderCompareResult(data);
+      } catch (err) {
+        compareResult.innerHTML = `<div class="empty">${esc(err.message || String(err))}</div>`;
+      } finally {
+        compareBtn.disabled = false;
+        compareBtn.textContent = "开始比对";
+      }
+    }
+
+    async function loadDetail(id) {
+      detail.innerHTML = `<div class="empty">正在加载基线详情...</div>`;
+      const res = await fetch(`/api/baselines/${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        detail.innerHTML = `<div class="empty">${esc(data.detail || "加载失败")}</div>`;
+        return;
+      }
+      renderDetail(data);
+      const url = new URL(location.href);
+      url.searchParams.set("id", id);
+      history.replaceState(null, "", url);
+    }
+
+    async function refresh() {
+      const [baselineRes, taskRes] = await Promise.all([fetch("/api/baselines"), fetch("/api/tasks")]);
+      const data = await baselineRes.json().catch(() => ({}));
+      const taskData = await taskRes.json().catch(() => ({}));
+      if (!baselineRes.ok) {
+        list.innerHTML = `<div class="empty">${esc(data.detail || "加载失败")}</div>`;
+        return;
+      }
+      baselines = data.baselines || [];
+      tasks = taskData.tasks || [];
+      renderCompareControls();
+      const targetId = new URL(location.href).searchParams.get("id");
+      if (targetId && baselines.some((b) => b.id === targetId)) {
+        compareBaseline.value = targetId;
+      }
+      renderList();
+      restoreCompareStateIfNeeded();
+    }
+
+    compareBtn.addEventListener("click", startCompare);
+    swapCompareBtn.addEventListener("click", swapCompareSources);
+    compareBaseline.addEventListener("change", () => selectBaselineForCompare(compareBaseline.value));
+    refresh();
+  </script>
+</body>
+</html>

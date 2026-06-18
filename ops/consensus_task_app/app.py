@@ -17,13 +17,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+
+try:
+    from .baseline_store import BaselineError, BaselineStore
+except ImportError:
+    from baseline_store import BaselineError, BaselineStore
 
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS_ROOT = Path(os.getenv("OCR_CONSENSUS_RUNS_DIR", ROOT / "ops" / "reports" / "ocr_consensus_task_runs"))
+BASELINES_ROOT = Path(os.getenv("OCR_CONSENSUS_BASELINES_DIR", ROOT / "ops" / "reports" / "ocr_consensus_baselines"))
+BASELINE_DB = Path(os.getenv("OCR_CONSENSUS_BASELINE_DB", BASELINES_ROOT / "baselines.db"))
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 COLLECT_RUNNER = ROOT / "ops" / "199_ocr_collect_runner.py"
 DASHBOARD_BUILDER = ROOT / "ops" / "199_build_ocr_html_list.py"
@@ -96,6 +103,7 @@ PERSON_STOPWORDS = NAME_NOISE_TOKENS | {
 }
 
 RUNS_ROOT.mkdir(parents=True, exist_ok=True)
+BASELINES_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="4OCR Consensus Task App", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -106,6 +114,7 @@ TASKS: Dict[str, Dict[str, Any]] = {}
 TASK_QUEUE: asyncio.Queue[str] = asyncio.Queue()
 WORKER_TASK: Optional[asyncio.Task] = None
 TASK_PROCS: Dict[str, Set[Any]] = defaultdict(set)
+BASELINE_STORE = BaselineStore(BASELINE_DB, RUNS_ROOT)
 
 
 class TaskStopped(Exception):
@@ -116,7 +125,7 @@ class TaskStopped(Exception):
 async def _no_cache_static(request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path == "/" or path.startswith("/runs/") or path.startswith("/static/") or path.startswith("/assets/"):
+    if path in {"/", "/baselines"} or path.startswith("/runs/") or path.startswith("/static/") or path.startswith("/assets/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -1940,6 +1949,7 @@ def _ensure_worker() -> None:
 @app.on_event("startup")
 async def _startup() -> None:
     _load_existing_tasks()
+    BASELINE_STORE.init_db()
     for task in sorted(TASKS.values(), key=lambda t: t.get("created_at", "")):
         if task.get("status") == "queued":
             await TASK_QUEUE.put(task["id"])
@@ -1949,6 +1959,11 @@ async def _startup() -> None:
 @app.get("/")
 async def home():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/baselines")
+async def baselines_page():
+    return FileResponse(STATIC_DIR / "baselines.html")
 
 
 @app.post("/api/tasks")
@@ -2029,6 +2044,106 @@ async def get_task(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="task not found")
     return task
+
+
+@app.post("/api/tasks/{task_id}/baseline")
+async def save_task_as_baseline(task_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+    task = TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+    payload = payload or {}
+    try:
+        baseline = BASELINE_STORE.create_from_task(
+            task,
+            name=str(payload.get("name") or "").strip(),
+            baseline_type=str(payload.get("type") or "snapshot").strip() or "snapshot",
+            notes=str(payload.get("notes") or "").strip(),
+            created_by=str(payload.get("created_by") or "").strip(),
+            review_state=payload.get("review_state") if isinstance(payload.get("review_state"), dict) else {},
+        )
+    except BaselineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "baseline": baseline}
+
+
+@app.get("/api/baselines")
+async def list_baselines():
+    return {"baselines": BASELINE_STORE.list_baselines()}
+
+
+@app.get("/api/baselines/{baseline_id}")
+async def get_baseline(baseline_id: str):
+    try:
+        return BASELINE_STORE.get_baseline(baseline_id)
+    except BaselineError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.patch("/api/baselines/{baseline_id}")
+async def update_baseline(baseline_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+    payload = payload or {}
+    try:
+        baseline = BASELINE_STORE.update_baseline(
+            baseline_id,
+            name=str(payload.get("name") or "").strip(),
+            notes=str(payload.get("notes")) if payload.get("notes") is not None else None,
+        )
+    except BaselineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "baseline": baseline}
+
+
+@app.delete("/api/baselines/{baseline_id}")
+async def delete_baseline(baseline_id: str):
+    try:
+        return BASELINE_STORE.delete_baseline(baseline_id)
+    except BaselineError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/api/compare")
+async def compare_with_baseline(payload: Optional[Dict[str, Any]] = Body(default=None)):
+    payload = payload or {}
+    baseline_id = str(payload.get("baseline_id") or "").strip()
+    task_id = str(payload.get("task_id") or "").strip()
+    if not baseline_id:
+        raise HTTPException(status_code=400, detail="baseline_id is required")
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is required")
+    task = TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+    try:
+        return BASELINE_STORE.compare_task_to_baseline(baseline_id, task)
+    except BaselineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/baselines/{baseline_id}/apply-compare")
+async def apply_compare_to_baseline(baseline_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+    payload = payload or {}
+    task_id = str(payload.get("task_id") or "").strip()
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is required")
+    task = TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+    decisions = payload.get("decisions")
+    if not isinstance(decisions, list) or not decisions:
+        raise HTTPException(status_code=400, detail="decisions is required")
+    try:
+        baseline = BASELINE_STORE.create_updated_from_compare(
+            baseline_id,
+            task,
+            decisions=decisions,
+            name=str(payload.get("name") or "").strip(),
+            baseline_type=str(payload.get("type") or "golden").strip() or "golden",
+            notes=str(payload.get("notes") or "").strip(),
+            created_by=str(payload.get("created_by") or "").strip(),
+        )
+    except BaselineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "baseline": baseline}
 
 
 @app.delete("/api/tasks/{task_id}")
