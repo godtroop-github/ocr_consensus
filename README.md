@@ -2,105 +2,132 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-OCR Consensus is a multi-engine OCR review workbench for converting screenshots and document images into auditable structured records.
+OCR Consensus is a multi-engine OCR workbench for turning screenshots and document images into auditable structured records.
 
-It is designed for workflows where raw OCR text is not enough. The system keeps model-level evidence, applies deterministic rule enhancement, performs field-level consensus, and provides a review UI for human verification.
+It is built for workflows where raw OCR text is not enough. The system preserves per-engine evidence, applies deterministic parsing rules, performs field-level consensus, supports human review, and manages reusable baselines for future data comparison.
 
-## Why this project
+> The screenshots in this README are rendered with fictitious demonstration data. They do not contain real personal data, real company names, real identifiers, deployment hosts, or customer information.
 
-- **From OCR text to structured records**: extracts names, masked identifiers, timestamps, count fields, company rows, roles, statuses, and share ratios where available.
-- **Multi-engine consensus**: runs several OCR lanes independently, then compares and merges field-level results.
-- **Explainable decisions**: every accepted field can be traced back to model output, confidence, rule processing, and consensus status.
-- **Human-in-the-loop quality control**: supports manual pass/fail review, record navigation, filtering, and issue discovery.
-- **Batch-friendly operation**: supports single images, multi-image upload, and ZIP processing through a task queue.
+## Highlights
+
+| Capability | What it provides |
+| --- | --- |
+| Multi-engine OCR harness | Runs independent OCR lanes and stores each engine's raw output, confidence, timing, and execution status. |
+| Rule-enhanced extraction | Normalizes noisy OCR text into names, masked identifiers, screenshot timestamps, count fields, and employment rows. |
+| Field-level consensus | Produces one reviewable consensus record while preserving missing, conflict, placeholder, rule-processed, and weak-evidence states. |
+| Employment detail parsing | Extracts company name, business status, role/title, and share ratio when present. |
+| Baseline management | Saves reviewed results as durable baselines, compares later batches against a baseline, and supports field-level adjudication. |
+| Evidence comparison | Shows side-by-side OCR lanes, raw OCR text, confidence, rule marks, and image evidence. |
+| Collaborative collection | Creates controlled submission batches, tracks participant status, and feeds accepted images into the same OCR workflow. |
+| Safe auxiliary models | Supports auxiliary/shadow OCR engines such as PP-OCRv6 without immediately replacing the primary consensus lanes. |
 
 ## Screenshots
 
-The screenshots below use hand-redacted sample data and are intended to demonstrate workflow and UI layout only.
+The following screens use the real product layout with synthetic demonstration records.
 
 ### Processing workbench
 
-Upload images or ZIP packages, create tasks, track progress, and open generated review results.
+Create OCR tasks from images or ZIP packages, keep the queue controlled, and monitor each OCR lane independently.
 
 ![Processing workbench](docs/assets/workbench.jpg)
 
 ### Structured result list
 
-Use aggregate counters, search, sorting, field filters, and review-state filters to quickly locate suspicious records.
+Use aggregate counters, search, column sorting, field filters, and review-state filters to locate missing fields, conflicts, method errors, or employment records.
 
 ![Structured result list](docs/assets/result-list.jpg)
 
 ### Detail review page
 
-Review the consensus result, source image, structured fields, company rows, and manual review controls in one place.
+Review the consensus result, source image, basic fields, employment details, image evidence, and review actions in one place.
 
 ![Detail review page](docs/assets/detail-review.jpg)
 
 ### Model evidence comparison
 
-Compare four OCR lanes side by side, including raw OCR evidence, confidence, rule-processing marks, and extracted employment rows.
+Compare OCR lanes side by side, including extracted fields, confidence, raw OCR text, rule processing, and auxiliary evidence.
 
 ![Model evidence comparison](docs/assets/model-evidence.png)
 
-## Core features
-
-| Feature | Description |
-| --- | --- |
-| Multi-engine OCR harness | Orchestrates multiple OCR engines and preserves independent outputs. |
-| Field extraction and normalization | Extracts and normalizes structured fields from noisy OCR text. |
-| Rule-enhanced parsing | Applies deterministic rules for masked identifiers, timestamps, counts, and layout artifacts. |
-| Employment detail extraction | Extracts company names, business status, roles, and share ratios when available. |
-| Field-level consensus | Merges multiple model outputs while preserving missing, conflict, placeholder, and weak-evidence states. |
-| Evidence retention | Keeps per-engine fields, confidence, raw OCR text, and execution status for review. |
-| Review dashboard | Provides filtering, sorting, aggregate counters, image preview, detail navigation, and manual review state. |
-| Batch task queue | Supports images and ZIP packages through a controlled task queue. |
-
 ## Workflow
 
-1. **Upload**: add one or more images, or upload a ZIP package.
-2. **OCR lanes**: run configured OCR engines independently.
-3. **Harness enhancement**: apply deterministic rules for text cleanup, field extraction, normalization, and candidate filtering.
-4. **Consensus**: merge model-level fields into a single structured result while preserving conflict and uncertainty signals.
-5. **Review**: inspect list and detail pages, compare evidence, and mark pass/fail review states.
-6. **Export or iterate**: use the results for downstream processing, quality analysis, or rule iteration.
+1. **Collect images**: upload single images, multiple images, or ZIP packages through the processing workbench or collaborative submission flow.
+2. **Run OCR lanes**: execute configured OCR engines independently, preserving raw outputs and method-level metadata.
+3. **Apply harness rules**: clean layout artifacts, normalize masked identifiers, extract timestamps, count fields, and candidate employment rows.
+4. **Build consensus**: merge model-level candidates into one structured result with explainable decision metadata.
+5. **Review exceptions**: use the dashboard to filter missing fields, conflicts, method errors, image-quality issues, and employment changes.
+6. **Save or compare baselines**: persist reviewed results as baselines, compare new batches, and adjudicate field-level differences.
 
-## What gets tracked
+## Data model
 
-- Basic fields: file id, file name, person name, masked identifier, screenshot time, and summary counts.
-- Employment detail rows: company name, business status, role/title, and share ratio when present.
-- Consensus status: agreed, conflict, missing, placeholder, evidence-filled, or rule-processed.
-- Evidence: per-engine extracted fields, confidence, raw OCR text, and method execution status.
-- Review state: pending, passed, failed, and review reasons.
+| Area | Example fields |
+| --- | --- |
+| Basic information | file id, file name, person name, employee id, masked identifier, screenshot date/time, related count, role count, shareholding count |
+| Employment details | row number, company name, business status, role/title, share ratio |
+| Consensus metadata | agreed, conflict, missing, placeholder, evidence-filled, rule-processed, auxiliary-supported |
+| Method evidence | OCR engine name, runtime status, average confidence, extracted fields, raw OCR text, processing time |
+| Review state | pending, passed, failed, abandoned, review reason, adjudication choice |
+| Baseline evidence | baseline version, source task, selected images, image quality, image fingerprint hints |
+
+## Runtime modes
+
+| Mode | Purpose |
+| --- | --- |
+| Primary 4-lane OCR | Main consensus source. Engines are configured by environment variables. |
+| Auxiliary/shadow OCR | Runs additional engines such as `ppocrv6_small` for evidence collection or limited field assistance. |
+| Baseline comparison | Compares reviewed consensus records against a durable baseline and lists field-level differences. |
+| Collaborative submission | Lets multiple participants submit images into a controlled batch before OCR processing. |
+
+## Quick start
+
+```bash
+python3 ops/consensus_task_app_server.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8090/
+```
+
+The OCR engines themselves are environment-dependent. Configure runtime paths through environment variables instead of hardcoding local paths.
+
+Common variables:
+
+```bash
+export OCR_CONSENSUS_PORT=8090
+export OCR_ENGINE_PARALLEL=aggressive
+export OCR_SHADOW_ENGINES=ppocrv6_small
+export OCR_PARALLEL_SHADOW_ENGINES=0
+export OCR_ROI_ID_FALLBACK=0
+```
 
 ## Repository layout
 
 ```text
 .
-├── app.py                         # Generic Flask entry point
+├── app.py                         # Legacy/simple OCR entry point
 ├── ops/
-│   ├── consensus_task_app/         # Task queue and dashboard
-│   ├── extract_basics.py           # Basic-field extraction
+│   ├── consensus_task_app/         # Task queue, review UI, baseline store, collaborative submission
+│   ├── consensus_task_app_server.py# FastAPI/Uvicorn launcher for the consensus workbench
 │   ├── extract_employment_info.py  # Employment detail extraction
 │   └── *.py                        # Evaluation, export, and utility scripts
-├── scenes/                         # Scenario helpers
+├── scenes/                         # Scenario helpers for the legacy/simple flow
 ├── templates/                      # Legacy/simple templates
-├── docs/assets/                    # README screenshots
-└── PUBLICATION.md                  # Release and privacy checklist
+├── docs/assets/                    # README screenshots with synthetic data
+└── PUBLICATION.md                  # Publication and privacy checklist
 ```
 
-## Quick start
+## Privacy and publication policy
 
-```bash
-python3 ops/consensus_task_app/app.py
-```
+This repository is intended to contain source code, templates, and documentation only.
 
-Then open the printed local URL in a browser and upload test images or a ZIP file.
+Do not commit runtime data, uploaded images, OCR result JSON files, generated dashboards, baseline databases, proxy scripts, local environment files, internal hostnames, or customer-specific process reports.
 
-For real OCR execution, configure engine commands and runtime paths through environment variables rather than hardcoding local paths.
+See [PUBLICATION.md](PUBLICATION.md) before publishing a release.
 
+## Project status
 
-## Status
+OCR Consensus is a controlled extraction, consensus, baseline, and review workbench. It is suitable for OCR quality evaluation, rule iteration, batch review, baseline comparison, and human-in-the-loop verification.
 
-OCR Consensus is currently a controlled extraction and review workbench. It is suitable for batch evaluation, rule iteration, quality analysis, and human-in-the-loop review.
-
-Before production use, verify OCR engine availability, storage policy, deployment isolation, access control, and data retention requirements.
+Before production use, validate engine availability, access control, storage isolation, retention policy, audit logging, and deployment-specific security requirements.
